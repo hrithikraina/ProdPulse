@@ -1,57 +1,31 @@
 [
   {
-    "id": "INC-NEW-01",
-    "title": "Checkout requests timing out during peak sale",
-    "service": "checkout-api",
+    "id": "INC-NEW-BNK-01",
+    "title": "Payments pending after risk-rules deployment",
+    "service": "transaction-validation-service",
     "severity": "SEV-1",
-    "symptoms": "p95 latency is above 20 seconds, customers see 504 errors, and active database connections are increasing.",
-    "rootCause": null,
-    "resolution": null
-  },
-  {
-    "id": "INC-NEW-02",
-    "title": "Payment authorization timeouts from primary gateway",
-    "service": "payment-gateway",
-    "severity": "SEV-1",
-    "symptoms": "Card authorizations fail with 502 responses and the external provider latency has increased.",
-    "rootCause": null,
-    "resolution": null
-  },
-  {
-    "id": "INC-NEW-03",
-    "title": "Fulfillment processing is behind",
-    "service": "order-worker",
-    "severity": "SEV-2",
-    "symptoms": "Kafka consumer lag is growing and recently placed orders are not reaching fulfillment.",
-    "rootCause": null,
-    "resolution": null
-  },
-  {
-    "id": "INC-NEW-04",
-    "title": "Users unable to sign in",
-    "service": "identity-service",
-    "severity": "SEV-2",
-    "symptoms": "The login endpoint returns 401 responses and token signature validation is failing.",
-    "rootCause": null,
-    "resolution": null
-  },
-  {
-    "id": "INC-NEW-05",
-    "title": "Checkout displays expired promotional prices",
-    "service": "pricing-service",
-    "severity": "SEV-2",
-    "symptoms": "Customers see a checkout price that differs from the active catalog promotion after a promotion update.",
-    "rootCause": null,
-    "resolution": null
-  },
-  {
-    "id": "INC-NEW-06",
-    "title": "Scheduled report exports contain invalid timestamps",
-    "service": "reporting-api",
-    "severity": "SEV-2",
-    "symptoms": "CSV reports generated after the morning release contain blank or malformed timestamps, causing customer finance imports to fail.",
+    "symptoms": "Payments submitted after the morning release stay pending and validation workers crash while selecting a sanctions rule.",
     "rootCause": null,
     "resolution": null,
-    "logs": "2026-07-16T08:42:01.104Z INFO reporting-api export-job-31 Starting scheduled finance export report_id=RPT-8821 format=csv\n2026-07-16T08:42:01.110Z INFO reporting-api export-job-31 Loaded 18492 report rows for customer=acme-finance\n2026-07-16T08:42:01.119Z DEBUG reporting-api export-job-31 Report completed_at value received as type=str value=2026-07-16T08:40:00Z\n2026-07-16T08:42:01.123Z WARN reporting-api export-job-31 Falling back to default CSV timestamp formatter\n2026-07-16T08:42:01.124Z ERROR reporting-api export-job-31 TimestampFormatError: completed_at is a string; expected datetime object\nTraceback (most recent call last):\n  File \"reporting/jobs/report_export.py\", line 42, in build_csv_row\n    timestamp = format_export_timestamp(report.completed_at)\n  File \"reporting/export/csv_formatter.py\", line 18, in format_export_timestamp\n    return value.strftime('%Y-%m-%d %H:%M:%S')\nAttributeError: 'str' object has no attribute 'strftime'\n2026-07-16T08:42:01.126Z INFO reporting-api export-job-31 Export completed with 18492 rows and 18492 blank timestamp values"
+    "logs": "2026-07-17T09:01:13Z INFO transaction-validation-service validation-812 Evaluating risk rules payment_id=PAY-90021\n2026-07-17T09:01:13Z ERROR transaction-validation-service validation-812 java.lang.IndexOutOfBoundsException: Index: 2 Size: 2 while selecting sanctions rule for payment_id=PAY-90021"
+  },
+  {
+    "id": "INC-NEW-BNK-02",
+    "title": "Validated transfers cannot be posted because database pool is exhausted",
+    "service": "ledger-posting-service",
+    "severity": "SEV-1",
+    "symptoms": "Validated payments fail to post and the ledger outbox backlog grows after database connection acquisition errors.",
+    "rootCause": null,
+    "resolution": null,
+    "logs": "2026-07-17T09:01:15Z INFO ledger-posting-service ledger-441 Posting double-entry transaction payment_id=PAY-90021\n2026-07-17T09:01:15Z ERROR ledger-posting-service ledger-441 DatabaseConnectionPoolExhaustedException: connection pool exhausted: active=2, max=2 payment_id=PAY-90021"
+  },
+  {
+    "id": "INC-NEW-BNK-03",
+    "title": "Customer balance does not show recent transfer",
+    "service": "account-query-service",
+    "severity": "SEV-2",
+    "symptoms": "A customer sees an old available balance after a completed transfer and account read latency is elevated.",
+    "rootCause": null,
+    "resolution": null
   }
 ]

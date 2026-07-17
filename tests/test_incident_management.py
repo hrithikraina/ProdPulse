@@ -39,10 +39,12 @@ def test_error_extraction_prefers_exception_from_logs() -> None:
 def test_code_agent_finds_simulated_source_for_log_error() -> None:
     agent = CodeInvestigationAgent(JsonCodeRepository(PROJECT_ROOT / "data"))
     result = agent.investigate(
-        incident().model_copy(update={"logs": "AttributeError: 'str' object has no attribute 'strftime'"})
+        incident("transaction-validation-service").model_copy(
+            update={"logs": "java.lang.IndexOutOfBoundsException: Index: 2 Size: 2"}
+        )
     )
     assert result.status == "CODE_EVIDENCE_FOUND"
-    assert "reporting/jobs/report_export.py" in result.evidence
+    assert "transaction-validation-service" in result.evidence
 
 async def test_azure_openai_client_parses_embedding_and_chat_responses() -> None:
     client = AzureOpenAIClient(

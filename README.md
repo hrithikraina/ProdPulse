@@ -19,7 +19,8 @@ A FastAPI application that searches historical incidents using Azure OpenAI embe
 - `repositories/` — JSON data and code-search adapters
 - `services/` — orchestration, Azure OpenAI client, and advisor
 - `vector/` — in-memory embedding search
-- `data/` — compact sample incidents, logs, deployment history, and simulated GitHub code
+- `data/` — banking incident fixtures, logs, deployment history, and simulated code-search results
+- `banking-demo/` — six small Java 17 services arranged in a three-layer banking payment flow
 
 ## Prerequisites
 
@@ -49,7 +50,7 @@ Configuration is through environment variables:
 - `DATA_DIRECTORY` (default `./data`)
 - `GITHUB_REPOSITORY` and `GITHUB_TOKEN` — optional. Set both to search your real `owner/repository` with GitHub's code-search API. Without them, the demo uses `data/simulated-github-code.json`.
 
-Open the API documentation at `http://127.0.0.1:8000/docs`. Send an incident to `POST /api/v1/incidents/analyze` using the `incident` object from `data/new-incident.json`.
+Open the API documentation at `http://127.0.0.1:8000/docs`. Send an incident to `POST /api/v1/incidents/analyze` using an `incident` object from `data/new-incident.json`.
 
 To run the tests:
 
@@ -59,4 +60,8 @@ pytest
 
 Update `data/historical-incidents.json` to add historical cases and `data/new-incident.json` to maintain sample incoming incidents.
 
-`INC-NEW-06` is an intentional low-similarity example with realistic application logs. Because `reporting-api` has no historical incidents, it activates both agents: the deployment agent finds `DEP-9005`, and the code agent extracts the timestamp exception and finds the simulated source evidence in `data/simulated-github-code.json`.
+## Banking demo fixtures
+
+`banking-demo/` contains two services in each layer: channel, processing, and data. Each service is a self-contained Maven application. See [banking-demo/README.md](banking-demo/README.md) for the flow and commands.
+
+`INC-NEW-BNK-01` and `INC-NEW-BNK-02` are intentional low-similarity incidents with runnable Java error logs: a risk-decision `IndexOutOfBoundsException` and database connection-pool exhaustion. They activate both agents: deployment history identifies releases `DEP-BNK-2003` and `DEP-BNK-2004`, while the code agent locates the matching Java source excerpt in `data/simulated-github-code.json`.

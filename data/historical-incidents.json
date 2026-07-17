@@ -1,92 +1,56 @@
 [
   {
-    "id": "INC-1001",
-    "title": "Checkout requests timing out after morning traffic increase",
-    "service": "checkout-api",
+    "id": "INC-BNK-1001",
+    "title": "Payment validation crashes while selecting sanctions rule",
+    "service": "transaction-validation-service",
     "severity": "SEV-1",
-    "symptoms": "p95 latency above 20 seconds and 504 responses during checkout after morning traffic increase.",
-    "rootCause": "Database connection pool exhausted after traffic surge.",
-    "resolution": "Raised pool capacity, cleared leaked connections, and added saturation alerts."
+    "symptoms": "Card and bank-transfer payments remain pending because validation workers throw IndexOutOfBoundsException while evaluating risk decisions.",
+    "rootCause": "The sanctions rule was removed from the rules-engine response but release 2.4.0 still read the third list item.",
+    "resolution": "Changed validation to look up decisions by rule name, restored the contract test, and replayed pending payments."
   },
   {
-    "id": "INC-1013",
-    "title": "Card payment authorization failing after morning traffic increase",
-    "service": "payment-gateway",
+    "id": "INC-BNK-1002",
+    "title": "Ledger posting exhausts database connections",
+    "service": "ledger-posting-service",
     "severity": "SEV-1",
-    "symptoms": "Payment authorizations return 502 errors and provider timeout rate is elevated after morning traffic increase.",
-    "rootCause": "Payment provider circuit breaker opened after upstream latency increase.",
-    "resolution": "Failed over to secondary provider and tuned circuit-breaker thresholds."
+    "symptoms": "Validated payments cannot be posted, ledger backlog grows, and the service reports database connection pool exhaustion.",
+    "rootCause": "A retry connection was not released before the ledger insert, exhausting the small database pool.",
+    "resolution": "Released retry connections in a finally block, raised the pool alert, and replayed the outbox backlog."
   },
   {
-    "id": "INC-1025",
-    "title": "Order fulfillment delayed after morning traffic increase",
-    "service": "order-worker",
+    "id": "INC-BNK-1003",
+    "title": "Payment initiation API returns gateway timeouts",
+    "service": "payment-initiation-api",
     "severity": "SEV-2",
-    "symptoms": "Kafka consumer lag grows and fulfillment events are delayed after morning traffic increase.",
-    "rootCause": "Malformed event caused consumer retry loop.",
-    "resolution": "Moved bad event to DLQ and added schema validation."
+    "symptoms": "Customers receive 504 responses while initiating transfers and the downstream validation client connection pool is saturated.",
+    "rootCause": "HTTP connections to validation workers were not returned after timeout retries.",
+    "resolution": "Restarted affected pods, fixed response-body closure, and added connection-pool saturation alerts."
   },
   {
-    "id": "INC-1037",
-    "title": "Inventory reservation failures after morning traffic increase",
-    "service": "inventory-service",
+    "id": "INC-BNK-1004",
+    "title": "Customer onboarding KYC decisions delayed",
+    "service": "customer-onboarding-api",
     "severity": "SEV-2",
-    "symptoms": "Reserve requests return conflicts while stock cache differs from database after morning traffic increase.",
-    "rootCause": "Redis inventory cache was stale after invalidation failure.",
-    "resolution": "Flushed affected keys and repaired cache invalidation consumer."
+    "symptoms": "New account creation is delayed while KYC callbacks queue for more than fifteen minutes.",
+    "rootCause": "The KYC provider rate limit was exceeded during a campaign.",
+    "resolution": "Throttled onboarding requests, retried the callback backlog, and configured rate-limit backoff."
   },
   {
-    "id": "INC-1049",
-    "title": "User login rejected after morning traffic increase",
-    "service": "identity-service",
+    "id": "INC-BNK-1005",
+    "title": "Account balance reads are stale",
+    "service": "account-query-service",
     "severity": "SEV-2",
-    "symptoms": "Users receive 401 responses after login and token validation fails after morning traffic increase.",
-    "rootCause": "OAuth signing certificate expired.",
-    "resolution": "Rotated certificate and added expiry alerting."
+    "symptoms": "Customers see balances that do not include recently posted payments while the read replica lags.",
+    "rootCause": "The account read replica was overloaded by an unbounded reporting query.",
+    "resolution": "Routed critical reads to the primary, cancelled the query, and added replica lag thresholds."
   },
   {
-    "id": "INC-1061",
-    "title": "Email notifications delayed after morning traffic increase",
-    "service": "notification-service",
+    "id": "INC-BNK-1006",
+    "title": "Regulatory settlement report generation delayed",
+    "service": "regulatory-reporting-service",
     "severity": "SEV-3",
-    "symptoms": "Email queue depth rises and delivery latency exceeds SLA after morning traffic increase.",
-    "rootCause": "SMTP provider rate limit was exceeded.",
-    "resolution": "Throttled sends, retried backlog, and added rate-limit controls."
-  },
-  {
-    "id": "INC-1073",
-    "title": "Customer profile API slow after morning traffic increase",
-    "service": "customer-api",
-    "severity": "SEV-2",
-    "symptoms": "Profile reads have high p95 latency and intermittent 503 errors after morning traffic increase.",
-    "rootCause": "Downstream customer database replica was overloaded.",
-    "resolution": "Rerouted reads to healthy replica and added replica capacity."
-  },
-  {
-    "id": "INC-1085",
-    "title": "Incorrect price shown at checkout after morning traffic increase",
-    "service": "pricing-service",
-    "severity": "SEV-2",
-    "symptoms": "Checkout price differs from catalog price for active promotions after morning traffic increase.",
-    "rootCause": "Promotion cache served stale rule version.",
-    "resolution": "Invalidated promotion cache and added version-consistency checks."
-  },
-  {
-    "id": "INC-1097",
-    "title": "Product search returns empty results after morning traffic increase",
-    "service": "search-api",
-    "severity": "SEV-3",
-    "symptoms": "Search requests succeed but return empty result sets for popular terms after morning traffic increase.",
-    "rootCause": "Search index shard was unavailable during rebalance.",
-    "resolution": "Restored shard allocation and paused rebalance during peak traffic."
-  },
-  {
-    "id": "INC-1109",
-    "title": "Service pods restarting after morning traffic increase",
-    "service": "platform-kubernetes",
-    "severity": "SEV-1",
-    "symptoms": "Multiple production pods restart and request error rate increases after morning traffic increase.",
-    "rootCause": "Node memory pressure triggered pod eviction.",
-    "resolution": "Drained unhealthy node, increased memory requests, and added node-pressure alerts."
+    "symptoms": "Daily settlement reports miss their delivery window and report job queue depth increases.",
+    "rootCause": "A report worker had insufficient memory for a large settlement batch.",
+    "resolution": "Increased worker memory, split batches, and added report-size limits."
   }
 ]

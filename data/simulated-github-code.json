@@ -1,10 +1,14 @@
 [
   {
-    "path": "reporting/export/csv_formatter.py",
-    "content": "def format_export_timestamp(value: datetime) -> str:\n    # Release 1.8.0 changed this value from a datetime to an ISO-8601 string.\n    return value.strftime('%Y-%m-%d %H:%M:%S')\n"
+    "path": "banking-demo/processing-layer/transaction-validation-service/src/main/java/com/novabank/validation/TransactionValidationService.java",
+    "content": "List<RuleDecision> decisions = engine.evaluate(payment);\n// Runtime signature: java.lang.IndexOutOfBoundsException: Index: 2 Size: 2.\n// Intentional release 2.4.0 defect: sanctions decision is no longer at index 2.\nRuleDecision sanctionsDecision = decisions.get(2); // IndexOutOfBoundsException when list length is 2"
   },
   {
-    "path": "reporting/jobs/report_export.py",
-    "content": "def build_csv_row(report):\n    try:\n        timestamp = format_export_timestamp(report.completed_at)\n    except AttributeError as error:\n        logger.error('TimestampFormatError: completed_at is a string; expected datetime object', exc_info=error)\n        raise\n    return {'completed_at': timestamp}\n"
+    "path": "banking-demo/processing-layer/ledger-posting-service/src/main/java/com/novabank/ledger/DatabaseConnectionPool.java",
+    "content": "void acquire() {\n  if (activeConnections >= maxConnections) {\n    throw new DatabaseConnectionPoolExhaustedException(\"connection pool exhausted: active=\" + activeConnections + \", max=\" + maxConnections);\n  }\n  activeConnections++;\n}"
+  },
+  {
+    "path": "banking-demo/channel-layer/payment-initiation-api/src/main/java/com/novabank/payments/PaymentInitiationApplication.java",
+    "content": "System.out.println(\"Published payment.validation.request correlation_id=PAY-90021\");"
   }
 ]
