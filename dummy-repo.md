@@ -13,3 +13,7 @@ Every run writes a log to that service's logs/ directory. The transaction-valida
 The intended happy-path flow is:
 
 payment-initiation-api -> transaction-validation-service -> ledger-posting-service -> account-query-service -> regulatory-reporting-service
+
+
+transaction-validation-service: IndexOutOfBoundsException from an invalid positional risk-rule lookup.
+ledger-posting-service: DatabaseConnectionPoolExhaustedException from leaked/repeated connection acquisition.
