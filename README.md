@@ -56,7 +56,7 @@ To run the tests:
 ```bash
 pytest
 ```
-
+app runs on : http://127.0.0.1:8000/docs
 Update `data/historical-incidents.json` to add historical cases and `data/new-incident.json` to maintain sample incoming incidents.
 
 `INC-NEW-06` is an intentional low-similarity example with realistic application logs. Because `reporting-api` has no historical incidents, it activates both agents: the deployment agent finds `DEP-9005`, and the code agent extracts the timestamp exception and finds the simulated source evidence in `data/simulated-github-code.json`.
