@@ -6,6 +6,7 @@ from repositories.code_repository import JsonCodeRepository
 from services.incident_management import IncidentManagementService
 from services.azure_openai import AzureOpenAIClient
 from vector.in_memory_store import cosine_similarity
+from vector.azure_ai_search_store import AzureAISearchIncidentStore
 
 def incident(service: str = "checkout-api") -> Incident:
     return Incident(id="INC-1", title="Timeout", service=service, severity="SEV-1", symptoms="Requests time out")
@@ -27,7 +28,7 @@ async def test_low_similarity_runs_deployment_agent() -> None:
     class CodeAgent:
         def investigate(self, _incident: Incident) -> AgentFinding:
             return AgentFinding(agentName="CodeInvestigationAgent", status="CODE_EVIDENCE_FOUND", summary="Found code", evidence="file.py")
-    service = IncidentManagementService(Store(), Advisor(), DeploymentAgent(), CodeAgent(), 0.85)
+    service = IncidentManagementService(Store(), Advisor(), DeploymentAgent(), CodeAgent())
     result = await service.analyze(incident("reporting-api"))
     assert result.agent_findings[0].status == "DEPLOYMENT_FOUND"
     assert result.recommendation == "Investigate the release."
@@ -64,3 +65,28 @@ async def test_azure_openai_client_parses_embedding_and_chat_responses() -> None
     client._request = fake_request  # type: ignore[method-assign]
     assert await client.embed("incident text") == [0.1, 0.2]
     assert await client.generate("prompt") == "Investigate the release."
+
+
+async def test_azure_ai_search_store_uses_hybrid_text_vector_query() -> None:
+    store = AzureAISearchIncidentStore(
+        endpoint="https://example.search.windows.net",
+        api_key="test-key",
+        index_name="historical-incidents",
+        api_version="2025-09-01",
+    )
+
+    async def fake_request(payload: dict) -> dict:
+        assert payload["searchFields"] == "title,symptoms,service,content"
+        assert payload["vectorQueries"][0]["kind"] == "text"
+        assert payload["vectorQueries"][0]["fields"] == "contentVector"
+        return {"@odata.count": 1, "value": [{
+            "id": "INC-OLD-1", "title": "Old timeout", "service": "checkout-api",
+            "severity": "SEV-2", "symptoms": "Gateway timeout", "rootCause": "Bad pool",
+            "resolution": "Restarted safely", "@search.score": 0.021,
+        }]}
+
+    store._request = fake_request  # type: ignore[method-assign]
+    matches = await store.search(incident(), 3)
+    assert matches[0].incident.id == "INC-OLD-1"
+    assert matches[0].similarity == pytest.approx(0.021)
+    assert store.count == 1
