@@ -10,7 +10,6 @@ from agents.code_investigation import CodeInvestigationAgent
 from core.config import Settings
 from domain.models import AnalyzeRequest, HealthResponse, IncidentAnalysis
 from repositories.json_repository import DeploymentHistoryRepository, JsonIncidentRepository
-from repositories.code_repository import GithubCodeRepository, JsonCodeRepository
 from services.advisor import IncidentAdvisor
 from services.incident_management import IncidentManagementService
 from services.azure_openai import AzureOpenAIClient
@@ -46,18 +45,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         vector_store = await InMemoryIncidentVectorStore.build(incidents, azure_openai)
     else:
         raise RuntimeError("RAG_BACKEND must be either 'azure-search' or 'local'.")
-    code_repository = (
-        GithubCodeRepository(settings.github_repository, settings.github_token)
-        if settings.github_repository and settings.github_token
-        else JsonCodeRepository(settings.data_directory)
-    )
     app.state.incident_service = IncidentManagementService(
         vector_store=vector_store,
         advisor=IncidentAdvisor(azure_openai),
         deployment_agent=DeploymentCheckAgent(
             DeploymentHistoryRepository(settings.data_directory)
         ),
-        code_agent=CodeInvestigationAgent(code_repository),
+        code_agent=CodeInvestigationAgent(),
     )
     app.state.historical_incident_count = vector_store.count or 0
     yield

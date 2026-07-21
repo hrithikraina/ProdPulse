@@ -1,8 +1,7 @@
 import pytest
 from domain.models import AgentFinding, Incident, SimilarIncident
-from agents.code_investigation import CodeInvestigationAgent, extract_error
+from agents.code_investigation import extract_error
 from core.config import PROJECT_ROOT
-from repositories.code_repository import JsonCodeRepository
 from services.incident_management import IncidentManagementService
 from services.azure_openai import AzureOpenAIClient
 from vector.in_memory_store import cosine_similarity
@@ -26,7 +25,7 @@ async def test_low_similarity_runs_deployment_agent() -> None:
         def investigate(self, _incident: Incident) -> AgentFinding:
             return AgentFinding(agentName="DeploymentCheckAgent", status="DEPLOYMENT_FOUND", summary="Found one", evidence="DEP-1")
     class CodeAgent:
-        def investigate(self, _incident: Incident) -> AgentFinding:
+        async def investigate(self, _incident: Incident) -> AgentFinding:
             return AgentFinding(agentName="CodeInvestigationAgent", status="CODE_EVIDENCE_FOUND", summary="Found code", evidence="file.py")
     service = IncidentManagementService(Store(), Advisor(), DeploymentAgent(), CodeAgent())
     result = await service.analyze(incident("reporting-api"))
@@ -37,15 +36,6 @@ def test_error_extraction_prefers_exception_from_logs() -> None:
     logs = "INFO export started\nERROR TimestampFormatError: completed_at is a string\nAttributeError: 'str' object has no attribute 'strftime'"
     assert extract_error(logs) == "AttributeError: 'str' object has no attribute 'strftime'"
 
-def test_code_agent_finds_simulated_source_for_log_error() -> None:
-    agent = CodeInvestigationAgent(JsonCodeRepository(PROJECT_ROOT / "data"))
-    result = agent.investigate(
-        incident("transaction-validation-service").model_copy(
-            update={"logs": "java.lang.IndexOutOfBoundsException: Index: 2 Size: 2"}
-        )
-    )
-    assert result.status == "CODE_EVIDENCE_FOUND"
-    assert "transaction-validation-service" in result.evidence
 
 async def test_azure_openai_client_parses_embedding_and_chat_responses() -> None:
     client = AzureOpenAIClient(

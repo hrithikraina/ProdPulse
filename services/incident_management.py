@@ -25,7 +25,7 @@ class IncidentManagementService:
         # A convincing old incident can still mask a fresh deployment regression.
         findings.append(self._deployment_agent.investigate(incident))
         if incident.logs:
-            findings.append(self._code_agent.investigate(incident))
+            findings.append(await self._code_agent.investigate(incident))
         recommendation = await self._advisor.recommend(incident, matches, findings)
         return IncidentAnalysis(
             incomingIncident=incident,

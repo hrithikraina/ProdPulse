@@ -1,50 +1,40 @@
-"""Extracts an error from logs and connects it to relevant code evidence."""
+"""Connect an incident's log string to the async LangGraph RCA workflow."""
 
 import re
 
 from domain.models import AgentFinding, Incident
-from repositories.code_repository import CodeRepository
 
 
 class CodeInvestigationAgent:
     """Runs only for low-similarity incidents that include application logs."""
 
-    def __init__(self, code_repository: CodeRepository) -> None:
-        self._code_repository = code_repository
-
-    def investigate(self, incident: Incident) -> AgentFinding:
-        error = extract_error(incident.logs or "")
-        if error is None:
+    async def investigate(self, incident: Incident) -> AgentFinding:
+        logs = incident.logs or ""
+        if not logs.strip():
             return AgentFinding(
                 agentName="CodeInvestigationAgent",
-                status="NO_ERROR_EXTRACTED",
-                summary="Logs were supplied but no actionable error signature was found.",
-                evidence="Provide stack traces or ERROR-level log entries for a code investigation.",
+                status="NO_LOGS_SUPPLIED",
+                summary="No application logs were supplied for RCA.",
+                evidence="Provide ERROR-level logs or a stack trace.",
             )
-
         try:
-            matches = self._code_repository.search(error)
+            # Delay graph initialization until logs actually require RCA. This
+            # keeps lightweight API imports and log-free requests independent
+            # of the RCA-only Azure/MCP configuration.
+            from agents.rca_graph import run_rca
+            result = await run_rca(logs)
         except RuntimeError as error:
             return AgentFinding(
                 agentName="CodeInvestigationAgent",
-                status="BACKEND_UNAVAILABLE",
-                summary=f"Extracted error signature: {error}",
-                evidence="Code search could not be completed; investigate the repository manually.",
+                status="RCA_UNAVAILABLE",
+                summary="The RCA workflow could not complete.",
+                evidence=str(error),
             )
-        if not matches:
-            return AgentFinding(
-                agentName="CodeInvestigationAgent",
-                status="CODE_NOT_FOUND",
-                summary=f"Extracted error signature: {error}",
-                evidence="No matching source was found in the configured code repository.",
-            )
-
-        evidence = "\n\n".join(f"{match.path}:\n{match.excerpt}" for match in matches)
         return AgentFinding(
-            agentName="CodeInvestigationAgent",
-            status="CODE_EVIDENCE_FOUND",
-            summary=f"Extracted error signature: {error}",
-            evidence=evidence,
+            agentName="RcaGraphAgent",
+            status="RCA_COMPLETED",
+            summary="LangGraph RCA completed from incident.logs.",
+            evidence=result["summary"],
         )
 
 

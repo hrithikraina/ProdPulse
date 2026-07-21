@@ -1,0 +1,95 @@
+{
+  "application_name": "Payments Platform",
+  "llm": {
+    "provider": "azure_openai",
+    "endpoint_env": "AZURE_OPENAI_ENDPOINT",
+    "api_key_env": "AZURE_OPENAI_API_KEY",
+    "deployment_env": "AZURE_OPENAI_DEPLOYMENT"
+  },
+  "flow_order": [
+    "channel",
+    "processing",
+    "data"
+  ],
+  "components": {
+    "channel": {
+      "description": "Receives customer requests and starts payment journeys.",
+      "table": "channel_requests",
+      "repositories": [
+        {
+          "name": "customer-onboarding",
+          "keywords": [
+            "onboarding",
+            "customer",
+            "kyc",
+            "registration"
+          ]
+        },
+        {
+          "name": "payment-initiation",
+          "keywords": [
+            "payment",
+            "initiation",
+            "instruction",
+            "beneficiary"
+          ]
+        }
+      ]
+    },
+    "processing": {
+      "description": "Validates transactions and posts them to the ledger.",
+      "table": "processing_transactions",
+      "repositories": [
+        {
+          "name": "transaction-validation-service",
+          "github": {
+            "owner": "hrithikraina",
+            "repo": "transaction-validation-service",
+            "branch": "main"
+          },
+          "keywords": [
+            "validation",
+            "validate",
+            "sanctions",
+            "limits"
+          ]
+        },
+        {
+          "name": "ledger-posting",
+          "keywords": [
+            "ledger",
+            "posting",
+            "journal",
+            "accounting"
+          ]
+        }
+      ]
+    },
+    "data": {
+      "description": "Provides account data and creates regulatory reports.",
+      "table": "data_reporting",
+      "repositories": [
+        {
+          "name": "account-query",
+          "keywords": [
+            "account",
+            "balance",
+            "query",
+            "statement"
+          ]
+        },
+        {
+          "name": "regulatory-reporting",
+          "keywords": [
+            "regulatory",
+            "reporting",
+            "report",
+            "compliance"
+          ]
+        }
+      ]
+    }
+  }
+}
+
+
