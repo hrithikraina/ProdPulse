@@ -11,7 +11,7 @@ from typing import Any, Awaitable, Callable
 from uuid import uuid4
 
 from agents.deployment_check import DeploymentCheckAgent
-from domain.models import AgentFinding, AnalysisChatResponse, Incident, IncidentAnalysis, SimilarIncident
+from domain.models import AgentFinding, AgentFlowStep, AnalysisChatResponse, ChatNarrative, Incident, IncidentAnalysis, SimilarIncident
 from repositories.code_repository import CodeRepository
 from services.azure_openai import AzureOpenAIClient
 from vector.store import IncidentStore
@@ -22,7 +22,7 @@ class AnalysisSession:
     incident: Incident
     historical_incidents: list[SimilarIncident]
     agent_findings: list[AgentFinding]
-    initial_recommendation: str
+    initial_assessment: str
     recent_messages: list[dict[str, Any]] = field(default_factory=list)
     expires_at: datetime = field(default_factory=lambda: datetime.now(UTC) + timedelta(minutes=30))
 
@@ -43,7 +43,12 @@ class AnalysisSessionStore:
                 incident=analysis.incoming_incident,
                 historical_incidents=list(analysis.similar_incidents),
                 agent_findings=list(analysis.agent_findings),
-                initial_recommendation=analysis.recommendation,
+                initial_assessment=json.dumps({
+                    "summary": analysis.summary,
+                    "nextActionSteps": analysis.next_action_steps,
+                    "rca": analysis.rca,
+                    "codeChanges": analysis.code_changes,
+                }),
                 expires_at=datetime.now(UTC) + self._ttl,
             )
         return session_id
@@ -178,6 +183,7 @@ class AnalysisChatService:
         messages = [self._system_message(session), *session.recent_messages, {"role": "user", "content": message}]
         calls: list[str] = []
         new_findings: list[AgentFinding] = []
+        flow: list[AgentFlowStep] = []
         sources = self._session_sources(session)
         for _ in range(3):
             response = await self._client.chat_with_tools(messages, self._registry.definitions())
@@ -185,10 +191,14 @@ class AnalysisChatService:
             messages.append(assistant_message)
             tool_calls = assistant_message.get("tool_calls") or []
             if not tool_calls:
-                answer = str(assistant_message.get("content") or "Evidence is insufficient to answer that safely.").strip()
+                narrative = self._narrative(
+                    str(assistant_message.get("content") or "Evidence is insufficient to answer that safely.").strip(),
+                    new_findings,
+                )
                 session.recent_messages = (messages[1:])[-12:]
                 await self._sessions.touch(session)
-                return AnalysisChatResponse(answer=answer, sources=list(dict.fromkeys(sources)), newFindings=new_findings, agentCalls=calls)
+                flow.append(AgentFlowStep(agentName="ProdPlusIncidentAdvisor", status="COMPLETED"))
+                return AnalysisChatResponse(answer=narrative.answer, agentSummary=narrative.agent_summary, evidenceSummary=self._evidence_summary(session), codeChanges=narrative.code_changes, agentFlow=flow, sources=list(dict.fromkeys(sources)), newFindings=new_findings, agentCalls=calls)
             for call in tool_calls:
                 name = call.get("function", {}).get("name", "")
                 try:
@@ -200,20 +210,22 @@ class AnalysisChatService:
                     new_findings.append(finding)
                     session.agent_findings.append(finding)
                     sources.extend(finding_sources)
+                    flow.append(AgentFlowStep(agentName=finding.agent_name, status=finding.status))
                     content = finding.model_dump_json(by_alias=True)
                 except (ValueError, json.JSONDecodeError, RuntimeError) as error:
                     content = json.dumps({"error": str(error)})
                 messages.append({"role": "tool", "tool_call_id": call.get("id"), "content": content})
         session.recent_messages = (messages[1:])[-12:]
         await self._sessions.touch(session)
-        return AnalysisChatResponse(answer="I gathered the available approved evidence but could not complete a safe answer. Please refine the question.", sources=list(dict.fromkeys(sources)), newFindings=new_findings, agentCalls=calls)
+        flow.append(AgentFlowStep(agentName="ProdPlusIncidentAdvisor", status="INCOMPLETE"))
+        return AnalysisChatResponse(answer="I gathered the available approved evidence but could not complete a safe answer. Please refine the question.", agentSummary=self._finding_summary(new_findings), evidenceSummary=self._evidence_summary(session), codeChanges=None, agentFlow=flow, sources=list(dict.fromkeys(sources)), newFindings=new_findings, agentCalls=calls)
 
     @staticmethod
     def _system_message(session: AnalysisSession) -> dict[str, str]:
         history = "\n".join(f"- {item.incident.id}: rootCause={item.incident.root_cause}; resolution={item.incident.resolution}" for item in session.historical_incidents) or "None"
         findings = "\n".join(f"- {item.agent_name}: {item.summary} Evidence: {item.evidence}" for item in session.agent_findings) or "None"
-        evidence = f"Incoming incident: {session.incident.searchable_text()}\nInitial recommendation: {session.initial_recommendation}\nHistorical evidence:\n{history}\nAgent findings:\n{findings}"
-        return {"role": "system", "content": "You are Prod+ Incident Advisor. Use only evidence in this message. Answer directly when it is enough; otherwise request only an approved tool needed to obtain missing evidence. Never claim access to production, execute changes, deploy, rollback, modify source, change balances, or contact counterparties. Clearly distinguish evidence from hypotheses and cite evidence source IDs/paths in your answer.\n\nCURRENT SESSION EVIDENCE:\n" + evidence}
+        evidence = f"Incoming incident: {session.incident.searchable_text()}\nInitial structured assessment: {session.initial_assessment}\nHistorical evidence:\n{history}\nAgent findings:\n{findings}"
+        return {"role": "system", "content": "You are Prod+ Incident Advisor. Use only evidence in this message. Answer directly when it is enough; otherwise request only an approved tool needed to obtain missing evidence. Never claim access to production, execute changes, deploy, rollback, modify source, change balances, or contact counterparties. Clearly distinguish evidence from hypotheses and cite evidence source IDs/paths in your answer. For your final answer, return ONLY valid JSON with answer, agentSummary (one short combined summary of the evidence agents used in this turn), and codeChanges (a complete proposed code snippet only, without Markdown fences, or null).\n\nCURRENT SESSION EVIDENCE:\n" + evidence}
 
     @staticmethod
     def _session_sources(session: AnalysisSession) -> list[str]:
@@ -221,6 +233,35 @@ class AnalysisChatService:
         for finding in session.agent_findings:
             sources.extend(_source_ids(finding.evidence))
         return sources
+
+    @classmethod
+    def _narrative(cls, content: str, findings: list[AgentFinding]) -> ChatNarrative:
+        try:
+            return ChatNarrative.model_validate(json.loads(cls._json_content(content)))
+        except (json.JSONDecodeError, ValueError):
+            # Keep the endpoint structured even if a model ignores the JSON instruction.
+            return ChatNarrative(answer=content, agentSummary=cls._finding_summary(findings), codeChanges=None)
+
+    @staticmethod
+    def _finding_summary(findings: list[AgentFinding]) -> str:
+        return "; ".join(f"{finding.agent_name}: {finding.summary}" for finding in findings) or "No additional agent was required; the answer uses existing session evidence."
+
+    @staticmethod
+    def _evidence_summary(session: AnalysisSession) -> str:
+        historical = ", ".join(
+            f"{match.incident.id} ({match.similarity:.0%})" for match in session.historical_incidents
+        ) or "No historical incident met the 85% similarity threshold"
+        findings = "; ".join(
+            f"{finding.agent_name} [{finding.status}]: {finding.summary}" for finding in session.agent_findings
+        ) or "No agent evidence"
+        return f"Historical evidence: {historical}. Agent evidence: {findings}."
+
+    @staticmethod
+    def _json_content(content: str) -> str:
+        stripped = content.strip()
+        if stripped.startswith("```") and stripped.endswith("```"):
+            return stripped.split("\n", 1)[1].rsplit("\n", 1)[0]
+        return stripped
 
 
 def _source_ids(evidence: str) -> list[str]:

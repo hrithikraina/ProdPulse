@@ -5,6 +5,7 @@ from typing import Any
 import httpx
 
 from domain.models import Incident, SimilarIncident
+from vector.store import MAX_HISTORICAL_INCIDENTS, MIN_HISTORICAL_SIMILARITY
 
 
 class AzureAISearchIncidentStore:
@@ -24,28 +25,55 @@ class AzureAISearchIncidentStore:
 
     async def search(self, incident: Incident, limit: int) -> list[SimilarIncident]:
         query = incident.searchable_text()
-        payload = {
+        # A hybrid @search.score is an RRF rank, not a percentage. First run a
+        # vector-only query so the 85% threshold uses actual cosine similarity.
+        vector_data = await self._request({
             "count": True,
-            "search": query,
-            "searchFields": "title,symptoms,service,content",
+            "search": "",
             "select": "id,title,service,severity,symptoms,rootCause,resolution",
-            "top": limit,
+            "top": 50,
             "vectorQueries": [{
                 "kind": "text",
                 "text": query,
                 "fields": "contentVector",
-                # Let each retriever contribute enough candidates to RRF.
-                "k": max(50, limit),
+                "k": 50,
             }],
-        }
-        data = await self._request(payload)
-        count = data.get("@odata.count")
+        })
+        count = vector_data.get("@odata.count")
         if isinstance(count, int):
             self._count = count
-        values = data.get("value")
+        vector_values = vector_data.get("value")
+        if not isinstance(vector_values, list):
+            raise RuntimeError("Azure AI Search returned an invalid search response.")
+        similarity_by_id = {
+            document["id"]: self._cosine_similarity(document.get("@search.score"))
+            for document in vector_values
+            if isinstance(document, dict) and isinstance(document.get("id"), str)
+        }
+        qualified_ids = {
+            incident_id for incident_id, similarity in similarity_by_id.items()
+            if similarity >= MIN_HISTORICAL_SIMILARITY
+        }
+        if not qualified_ids:
+            return []
+
+        # Preserve hybrid keyword + vector ranking for the qualifying evidence.
+        hybrid_data = await self._request({
+            "search": query,
+            "searchFields": "title,symptoms,service,content",
+            "select": "id,title,service,severity,symptoms,rootCause,resolution",
+            "top": 50,
+            "vectorQueries": [{"kind": "text", "text": query, "fields": "contentVector", "k": 50}],
+        })
+        values = hybrid_data.get("value")
         if not isinstance(values, list):
             raise RuntimeError("Azure AI Search returned an invalid search response.")
-        return [self._to_match(document) for document in values]
+        matches = [
+            SimilarIncident(incident=Incident.model_validate(document), similarity=similarity_by_id[document["id"]])
+            for document in values
+            if isinstance(document, dict) and document.get("id") in qualified_ids
+        ]
+        return matches[:MAX_HISTORICAL_INCIDENTS]
 
     @property
     def count(self) -> int | None:
@@ -70,14 +98,12 @@ class AzureAISearchIncidentStore:
         return data
 
     @staticmethod
-    def _to_match(document: Any) -> SimilarIncident:
-        if not isinstance(document, dict):
-            raise RuntimeError("Azure AI Search returned an invalid incident document.")
+    def _cosine_similarity(score: Any) -> float:
+        """Convert Azure's vector-search score to cosine similarity."""
         try:
-            historical = Incident.model_validate(document)
+            numeric_score = float(score)
         except (TypeError, ValueError) as error:
-            raise RuntimeError(f"Azure AI Search returned an invalid incident: {error}") from error
-        # Hybrid search uses Reciprocal Rank Fusion, so this is a retrieval
-        # score, not cosine similarity. It is only shown to the advisor/user.
-        score = document.get("@search.rerankerScore", document.get("@search.score", 0.0))
-        return SimilarIncident(incident=historical, similarity=float(score))
+            raise RuntimeError("Azure AI Search returned an invalid vector score.") from error
+        if numeric_score <= 0:
+            raise RuntimeError("Azure AI Search returned an invalid vector score.")
+        return 2 - (1 / numeric_score)

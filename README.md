@@ -12,7 +12,9 @@ A FastAPI application that retrieves resolved historical incidents from Azure AI
 
 ## Temporary follow-up chat
 
-`POST /api/v1/incidents/analyze` now returns an `analysisId`. It creates an in-memory session containing the incoming incident, retrieved historical incidents, agent findings, recommendation, and the latest chat messages. It is not written to Cosmos DB or any other database, expires after 30 minutes of inactivity, and disappears on application restart.
+`POST /api/v1/incidents/analyze` now returns an `analysisId`. It creates an in-memory session containing the incoming incident, retrieved historical incidents, agent findings, structured initial assessment (`summary`, `nextActionSteps`, `rca`, and `codeChanges`), and the latest chat messages. It is not written to Cosmos DB or any other database, expires after 30 minutes of inactivity, and disappears on application restart.
+
+Both analysis and chat responses include an ordered `agentFlow` array, where each item has `agentName` and `status`; it is intended for rendering the executed agent path in the UI. They also include `evidenceSummary`, a concise grounded summary of qualifying historical incidents and all collected agent findings. `codeChanges` is either one actual proposed code snippet (without explanatory text) or `null`. The explanatory remediation belongs in `nextActionSteps` (initial analysis) or `answer` (chat).
 
 - `POST /api/v1/analysis-sessions/{analysisId}/chat` with `{"message": "What code changes and tests are required?"}` asks a follow-up question.
 - `DELETE /api/v1/analysis-sessions/{analysisId}` removes the context immediately. Expired or deleted IDs return HTTP 404.
@@ -20,6 +22,8 @@ A FastAPI application that retrieves resolved historical incidents from Azure AI
 The model receives a secure, read-only tool registry. It can answer from session evidence or request an allowed tool based on the meaning of the question: `search_historical_incidents`, `get_deployment_evidence`, `get_code_evidence`, `inspect_code_change_impact`, or `run_deep_rca_evidence`. The last tool reuses the existing log-routed RCA graph, which invokes its configured GitHub MCP and read-only SQLite database agents only when logs justify them. The FastAPI backend validates the requested name against this registry, executes it, supplies its result back to the model, and limits one turn to three tool rounds. The model never directly accesses production, deploys, modifies source, changes balances, or sends messages.
 
 Never add the new/open incident to the historical container before analysis. Add it only after resolution, then run the indexer so it can become evidence for future incidents.
+
+Historical incidents are shown only when their vector cosine similarity is at least 85%. The API returns at most three qualifying incidents and returns an empty `similarIncidents` array when there are none. Azure AI Search hybrid RRF scores are used for ranking but are not treated as percentages; the service derives the 85% gate from a vector-only cosine similarity query.
 
 ## Project layout
 

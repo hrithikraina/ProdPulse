@@ -38,12 +38,31 @@ class AgentFinding(ApiModel):
     summary: str
     evidence: str
 
+
+class AgentFlowStep(ApiModel):
+    agent_name: str = Field(alias="agentName")
+    status: str
+
+
+class InitialAssessment(ApiModel):
+    """Grounded, UI-ready result of the initial evidence analysis."""
+    summary: str = Field(description="Short summary of all agent findings.")
+    next_action_steps: list[str] = Field(alias="nextActionSteps", default_factory=list)
+    rca: list[str] = Field(default_factory=list, max_length=10, description="Maximum ten concise RCA lines.")
+    code_changes: str | None = Field(alias="codeChanges", default=None, description="Actual proposed code only; null when no code is needed.")
+
+
 class IncidentAnalysis(ApiModel):
     analysis_id: str | None = Field(default=None, alias="analysisId")
     incoming_incident: Incident = Field(alias="incomingIncident")
     similar_incidents: list[SimilarIncident] = Field(alias="similarIncidents")
     agent_findings: list[AgentFinding] = Field(alias="agentFindings")
-    recommendation: str
+    summary: str
+    next_action_steps: list[str] = Field(alias="nextActionSteps")
+    rca: list[str] = Field(max_length=10)
+    code_changes: str | None = Field(alias="codeChanges")
+    evidence_summary: str = Field(alias="evidenceSummary")
+    agent_flow: list[AgentFlowStep] = Field(alias="agentFlow")
 
 class AnalyzeRequest(ApiModel):
     incident: Incident
@@ -54,8 +73,18 @@ class AnalysisChatRequest(ApiModel):
     message: str = Field(min_length=1, max_length=8000)
 
 
+class ChatNarrative(ApiModel):
+    answer: str
+    agent_summary: str = Field(alias="agentSummary")
+    code_changes: str | None = Field(default=None, alias="codeChanges")
+
+
 class AnalysisChatResponse(ApiModel):
     answer: str
+    agent_summary: str = Field(alias="agentSummary")
+    evidence_summary: str = Field(alias="evidenceSummary")
+    code_changes: str | None = Field(default=None, alias="codeChanges")
+    agent_flow: list[AgentFlowStep] = Field(default_factory=list, alias="agentFlow")
     sources: list[str] = Field(default_factory=list)
     new_findings: list[AgentFinding] = Field(default_factory=list, alias="newFindings")
     agent_calls: list[str] = Field(default_factory=list, alias="agentCalls")

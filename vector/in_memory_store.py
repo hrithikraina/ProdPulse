@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from math import sqrt
 from domain.models import Incident, SimilarIncident
 from services.azure_openai import AzureOpenAIClient
+from vector.store import qualifying_historical_matches
 
 @dataclass(frozen=True, slots=True)
 class VectorizedIncident:
@@ -19,7 +20,7 @@ class InMemoryIncidentVectorStore:
     async def search(self, incident: Incident, limit: int) -> list[SimilarIncident]:
         query_vector = await self._client.embed(incident.searchable_text())
         matches = [SimilarIncident(incident=entry.incident, similarity=cosine_similarity(query_vector, entry.vector)) for entry in self._entries]
-        return sorted(matches, key=lambda match: match.similarity, reverse=True)[:limit]
+        return qualifying_historical_matches(matches)
     @property
     def count(self) -> int:
         return len(self._entries)
