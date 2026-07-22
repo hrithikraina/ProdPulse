@@ -53,6 +53,8 @@ export AZURE_OPENAI_EMBEDDING_DEPLOYMENT="text-embedding-3-small"
 export AZURE_SEARCH_ENDPOINT="https://your-search-service.search.windows.net"
 export AZURE_SEARCH_API_KEY="your-search-admin-key"
 export AZURE_SEARCH_INDEX_NAME="historical-incidents"
+export GITHUB_PAT="your github key"
+export SQLITE_DB_PATH="data/PaymentsPlatform.db"
 uvicorn api.main:app --reload
 ```
 
