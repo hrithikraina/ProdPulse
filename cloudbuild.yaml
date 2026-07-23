@@ -33,7 +33,7 @@ steps:
         "managed",
         "--allow-unauthenticated",
         "--timeout",
-        "15m"
+        "60m"
       ]
 
 images:
