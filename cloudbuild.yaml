@@ -5,7 +5,7 @@ steps:
       [
         "build",
         "-t",
-        "asia-south1-docker.pkg.dev/grand-ward-502705-m1/incident-management-repo/ProdPulse",
+        "asia-south1-docker.pkg.dev/grand-ward-502705-m1/incident-management-repo/prod-pulse",
         "."
       ]
 
@@ -14,7 +14,7 @@ steps:
     args:
       [
         "push",
-        "asia-south1-docker.pkg.dev/grand-ward-502705-m1/incident-management-repo/ProdPulse"
+        "asia-south1-docker.pkg.dev/grand-ward-502705-m1/incident-management-repo/prod-pulse"
       ]
 
   # Deploy to Cloud Run
@@ -24,9 +24,9 @@ steps:
       [
         "run",
         "deploy",
-        "ProdPulse",
+        "prod-pulse",
         "--image",
-        "asia-south1-docker.pkg.dev/grand-ward-502705-m1/incident-management-repo/ProdPulse",
+        "asia-south1-docker.pkg.dev/grand-ward-502705-m1/incident-management-repo/prod-pulse",
         "--region",
         "asia-south1",
         "--platform",
@@ -35,7 +35,7 @@ steps:
       ]
 
 images:
-  - "asia-south1-docker.pkg.dev/grand-ward-502705-m1/incident-management-repo/ProdPulse"
+  - "asia-south1-docker.pkg.dev/grand-ward-502705-m1/incident-management-repo/prod-pulse"
 
 options:
   logging: CLOUD_LOGGING_ONLY
