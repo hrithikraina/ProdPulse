@@ -8,12 +8,36 @@ from vector.in_memory_store import cosine_similarity
 from vector.azure_ai_search_store import AzureAISearchIncidentStore
 from vector.store import qualifying_historical_matches
 from services.analysis_sessions import AnalysisChatService, AnalysisSessionStore, IncidentToolRegistry
+from services.confidence import assess_confidence
 
 def incident(service: str = "checkout-api") -> Incident:
     return Incident(id="INC-1", title="Timeout", service=service, severity="SEV-1", symptoms="Requests time out")
 
+def test_similarity_text_excludes_resolution_only_fields() -> None:
+    item = Incident(
+        id="INC-1", title="Timeout", service="checkout-api", severity="SEV-1", symptoms="Requests time out",
+        rootCause="Exhausted pool", resolution="Raised pool size",
+    )
+    assert item.similarity_text() == "title: Timeout; service: checkout-api; severity: SEV-1; symptoms: Requests time out"
+
 def test_cosine_similarity_returns_one_for_identical_vectors() -> None:
     assert cosine_similarity([1.0, 2.0], [1.0, 2.0]) == pytest.approx(1.0)
+
+def test_confidence_uses_evidence_and_caps_scores_at_ten() -> None:
+    historical = Incident(id="INC-OLD", title="Timeout", service="checkout-api", severity="SEV-1", symptoms="Requests time out", rootCause="Pool exhausted", resolution="Roll back safely")
+    assessment = InitialAssessment(summary="", nextActionSteps=["Roll back the faulty release"], rca=[], codeChanges=None)
+    confidence = assess_confidence(
+        incident().model_copy(update={"logs": "ERROR TimeoutException: request timed out"}),
+        [SimilarIncident(incident=historical, similarity=0.99)],
+        [
+            AgentFinding(agentName="DeploymentCheckAgent", status="DEPLOYMENT_FOUND", summary="", evidence=""),
+            AgentFinding(agentName="RcaGraphAgent", status="RCA_COMPLETED", summary="", evidence=""),
+        ],
+        assessment,
+    )
+    assert confidence.rca.score == 10
+    assert confidence.recommendation.score == 10
+    assert "INC-OLD (99%)" in confidence.rca.reason
 
 async def test_low_similarity_runs_deployment_agent() -> None:
     class Store:
@@ -69,6 +93,7 @@ async def test_azure_ai_search_store_uses_hybrid_text_vector_query() -> None:
     )
 
     async def fake_request(payload: dict) -> dict:
+        assert payload["vectorQueries"][0]["text"] == incident().similarity_text()
         assert payload["vectorQueries"][0]["kind"] == "text"
         assert payload["vectorQueries"][0]["fields"] == "contentVector"
         if payload["search"] == "":
@@ -120,9 +145,13 @@ async def test_chat_executes_only_registered_tool_and_returns_its_source() -> No
         def investigate(self, _incident: Incident) -> AgentFinding:
             return AgentFinding(agentName="DeploymentCheckAgent", status="DEPLOYMENT_FOUND", summary="Found", evidence="deploymentId=DEP-1")
 
-    class CodeRepository:
-        def search(self, _query: str, limit: int = 3):
-            return []
+    class EvidenceAgents:
+        async def github_evidence(self, _incident, _focus):
+            return AgentFinding(agentName="GitHubEvidenceAgent", status="GITHUB_EVIDENCE_COMPLETED", summary="Found", evidence="repo"), ["repo"]
+        async def database_evidence(self, _incident, _focus):
+            return AgentFinding(agentName="SqlEvidenceAgent", status="DATABASE_EVIDENCE_COMPLETED", summary="Found", evidence="db"), ["db"]
+        async def summarize(self, _question, _findings):
+            return AgentFinding(agentName="EvidenceSummarizerAgent", status="EVIDENCE_SUMMARIZED", summary="Combined", evidence="combined")
 
     class Client:
         def __init__(self) -> None:
@@ -130,7 +159,7 @@ async def test_chat_executes_only_registered_tool_and_returns_its_source() -> No
         async def chat_with_tools(self, _messages, tools):
             self.call_count += 1
             assert {tool["function"]["name"] for tool in tools} == {
-                "search_historical_incidents", "get_deployment_evidence", "get_code_evidence", "inspect_code_change_impact", "run_deep_rca_evidence"
+                               "search_historical_incidents", "get_deployment_evidence", "get_github_evidence", "get_database_evidence", "run_deep_rca_evidence"
             }
             if self.call_count == 1:
                 return {"message": {"role": "assistant", "content": None, "tool_calls": [{"id": "call-1", "function": {"name": "search_historical_incidents", "arguments": '{"investigation_focus":"prior resolutions"}'}}]}}
@@ -139,7 +168,7 @@ async def test_chat_executes_only_registered_tool_and_returns_its_source() -> No
     sessions = AnalysisSessionStore()
     analysis = IncidentAnalysis(incomingIncident=incident(), similarIncidents=[], agentFindings=[], summary="Initial", nextActionSteps=[], rca=[], codeChanges=None, evidenceSummary="None", agentFlow=[])
     session_id = await sessions.create(analysis)
-    chat = AnalysisChatService(sessions, IncidentToolRegistry(Store(), DeploymentAgent(), CodeRepository()), Client())
+    chat = AnalysisChatService(sessions, IncidentToolRegistry(Store(), DeploymentAgent(), EvidenceAgents()), Client())
     response = await chat.chat(session_id, "Have we seen this before?")
     assert response is not None
     assert response.answer == "A prior incident exists."

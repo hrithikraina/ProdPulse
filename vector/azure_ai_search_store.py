@@ -24,7 +24,9 @@ class AzureAISearchIncidentStore:
         self._count: int | None = None
 
     async def search(self, incident: Incident, limit: int) -> list[SimilarIncident]:
-        query = incident.searchable_text()
+        # `contentVector` is populated from the historical record's `content`.
+        # Both texts contain only the four fields available for a new incident.
+        query = incident.similarity_text()
         # A hybrid @search.score is an RRF rank, not a percentage. First run a
         # vector-only query so the 85% threshold uses actual cosine similarity.
         vector_data = await self._request({

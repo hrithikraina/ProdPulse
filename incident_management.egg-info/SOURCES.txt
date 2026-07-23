@@ -1,6 +1,7 @@
 README.md
 pyproject.toml
 agents/__init__.py
+agents/chat_evidence_agents.py
 agents/code_investigation.py
 agents/deployment_check.py
 agents/rca_graph.py
@@ -22,6 +23,7 @@ services/__init__.py
 services/advisor.py
 services/analysis_sessions.py
 services/azure_openai.py
+services/confidence.py
 services/incident_management.py
 tests/test_incident_management.py
 vector/__init__.py

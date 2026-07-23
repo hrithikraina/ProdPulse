@@ -411,7 +411,10 @@ def make_component_agent(component: str):
         # scoped plan that decides which specialist nodes will be invoked.
         for repository in component_context["repositories"]:
             github = repository.get("github")
-            if github and repository["name"].lower() in error_logs.lower():
+            if github and (
+                repository["name"].lower() in error_logs.lower() or
+                any(kw.lower() in error_logs.lower() for kw in repository.get("keywords", []))
+            ):
                 github_repositories.append(
                     {
                         "repository": repository["name"],
