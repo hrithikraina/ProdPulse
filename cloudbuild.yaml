@@ -1,0 +1,41 @@
+steps:
+  # Build Docker image
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      [
+        "build",
+        "-t",
+        "asia-south1-docker.pkg.dev/grand-ward-502705-m1/incident-management-repo/ProdPulse",
+        "."
+      ]
+
+  # Push image
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      [
+        "push",
+        "asia-south1-docker.pkg.dev/grand-ward-502705-m1/incident-management-repo/ProdPulse"
+      ]
+
+  # Deploy to Cloud Run
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    entrypoint: gcloud
+    args:
+      [
+        "run",
+        "deploy",
+        "ProdPulse",
+        "--image",
+        "asia-south1-docker.pkg.dev/grand-ward-502705-m1/incident-management-repo/ProdPulse",
+        "--region",
+        "asia-south1",
+        "--platform",
+        "managed",
+        "--allow-unauthenticated"
+      ]
+
+images:
+  - "asia-south1-docker.pkg.dev/grand-ward-502705-m1/incident-management-repo/ProdPulse"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
