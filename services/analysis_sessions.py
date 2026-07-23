@@ -173,7 +173,8 @@ class IncidentToolRegistry:
             # This module owns optional MCP/SQL dependencies, so import it only
             # when the model has requested this approved deep-investigation tool.
             from agents.rca_graph import run_rca
-            result = await run_rca(session.incident.logs)
+            combined_context = f"Service: {session.incident.service}\nSymptoms: {session.incident.symptoms}\nLogs: {session.incident.logs}"
+            result = await run_rca(combined_context)
         except Exception as error:
             return AgentFinding(agentName="RcaGraphAgent", status="RCA_EVIDENCE_UNAVAILABLE", summary="The deep RCA workflow could not collect additional evidence.", evidence=str(error)), []
         github = result.get("github_evidence_round_2") or result.get("github_evidence_round_1") or []
@@ -247,13 +248,13 @@ class AnalysisChatService:
                     logger.error(f"Error handling tool call {name} in chat loop: {error}", exc_info=True)
                     content = json.dumps({"error": str(error)})
                 messages.append({"role": "tool", "tool_call_id": call.get("id"), "content": content})
-                    evidence_specialists = [finding for finding in round_findings if finding.agent_name in {"GitHubEvidenceAgent", "SqlEvidenceAgent"}]
-                    if len(evidence_specialists) > 1:
-                        synthesis = await self._registry.summarize_evidence(message, evidence_specialists)
-                        new_findings.append(synthesis)
-                        session.agent_findings.append(synthesis)
-                        flow.append(AgentFlowStep(agentName=synthesis.agent_name, status=synthesis.status))
-                        messages.append({"role": "user", "content": "Approved combined GitHub and database evidence for this question:\n" + synthesis.evidence})
+            evidence_specialists = [finding for finding in round_findings if finding.agent_name in {"GitHubEvidenceAgent", "SqlEvidenceAgent"}]
+            if len(evidence_specialists) > 1:
+                synthesis = await self._registry.summarize_evidence(message, evidence_specialists)
+                new_findings.append(synthesis)
+                session.agent_findings.append(synthesis)
+                flow.append(AgentFlowStep(agentName=synthesis.agent_name, status=synthesis.status))
+                messages.append({"role": "user", "content": "Approved combined GitHub and database evidence for this question:\n" + synthesis.evidence})
         session.recent_messages = (messages[1:])[-12:]
         await self._sessions.touch(session)
         flow.append(AgentFlowStep(agentName="ProdPlusIncidentAdvisor", status="INCOMPLETE"))

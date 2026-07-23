@@ -22,7 +22,8 @@ class CodeInvestigationAgent:
             # keeps lightweight API imports and log-free requests independent
             # of the RCA-only Azure/MCP configuration.
             from agents.rca_graph import run_rca
-            result = await run_rca(logs)
+            combined_context = f"Service: {incident.service}\nSymptoms: {incident.symptoms}\nLogs: {logs}"
+            result = await run_rca(combined_context)
         except RuntimeError as error:
             return AgentFinding(
                 agentName="CodeInvestigationAgent",
