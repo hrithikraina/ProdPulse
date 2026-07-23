@@ -12,6 +12,13 @@ from services.analysis_sessions import AnalysisChatService, AnalysisSessionStore
 def incident(service: str = "checkout-api") -> Incident:
     return Incident(id="INC-1", title="Timeout", service=service, severity="SEV-1", symptoms="Requests time out")
 
+def test_similarity_text_excludes_resolution_only_fields() -> None:
+    item = Incident(
+        id="INC-1", title="Timeout", service="checkout-api", severity="SEV-1", symptoms="Requests time out",
+        rootCause="Exhausted pool", resolution="Raised pool size",
+    )
+    assert item.similarity_text() == "title: Timeout; service: checkout-api; severity: SEV-1; symptoms: Requests time out"
+
 def test_cosine_similarity_returns_one_for_identical_vectors() -> None:
     assert cosine_similarity([1.0, 2.0], [1.0, 2.0]) == pytest.approx(1.0)
 
@@ -69,6 +76,7 @@ async def test_azure_ai_search_store_uses_hybrid_text_vector_query() -> None:
     )
 
     async def fake_request(payload: dict) -> dict:
+        assert payload["vectorQueries"][0]["text"] == incident().similarity_text()
         assert payload["vectorQueries"][0]["kind"] == "text"
         assert payload["vectorQueries"][0]["fields"] == "contentVector"
         if payload["search"] == "":

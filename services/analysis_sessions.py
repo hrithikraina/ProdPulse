@@ -259,7 +259,7 @@ class AnalysisChatService:
     def _system_message(session: AnalysisSession) -> dict[str, str]:
         history = "\n".join(f"- {item.incident.id}: rootCause={item.incident.root_cause}; resolution={item.incident.resolution}" for item in session.historical_incidents) or "None"
         findings = "\n".join(f"- {item.agent_name}: {item.summary} Evidence: {item.evidence}" for item in session.agent_findings) or "None"
-        evidence = f"Incoming incident: {session.incident.searchable_text()}\nInitial structured assessment: {session.initial_assessment}\nHistorical evidence:\n{history}\nAgent findings:\n{findings}"
+        evidence = f"Incoming incident: {session.incident.similarity_text()}\nInitial structured assessment: {session.initial_assessment}\nHistorical evidence:\n{history}\nAgent findings:\n{findings}"
         return {"role": "system", "content": "You are Prod+ Incident Advisor. Use only evidence in this message. Answer directly when it is enough; otherwise request only an approved tool needed to obtain missing evidence. Never claim access to production, execute changes, deploy, rollback, modify source, change balances, or contact counterparties. Clearly distinguish evidence from hypotheses and cite evidence source IDs/paths in your answer. For your final answer, return ONLY valid JSON with answer, agentSummary (one short combined summary of the evidence agents used in this turn), and codeChanges (a complete proposed code snippet only, without Markdown fences, or null).\n\nCURRENT SESSION EVIDENCE:\n" + evidence}
 
     @staticmethod

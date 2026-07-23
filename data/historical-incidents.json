@@ -7,7 +7,7 @@
     "symptoms": "Card and bank-transfer payments remain pending because validation workers throw IndexOutOfBoundsException while evaluating risk decisions.",
     "rootCause": "The sanctions rule was removed from the rules-engine response but release 2.4.0 still read the third list item.",
     "resolution": "Changed validation to look up decisions by rule name, restored the contract test, and replayed pending payments.",
-    "content": "Payment validation crashes while selecting sanctions rule. Service: transaction-validation-service. Symptoms: Card and bank-transfer payments remain pending because validation workers throw IndexOutOfBoundsException while evaluating risk decisions. Root cause: The sanctions rule was removed from the rules-engine response but release 2.4.0 still read the third list item. Resolution: Changed validation to look up decisions by rule name, restored the contract test, and replayed pending payments."
+    "content": "title: Payment validation crashes while selecting sanctions rule; service: transaction-validation-service; severity: SEV-1; symptoms: Card and bank-transfer payments remain pending because validation workers throw IndexOutOfBoundsException while evaluating risk decisions"
   },
   {
     "id": "INC-BNK-1002",
@@ -17,7 +17,7 @@
     "symptoms": "Validated payments cannot be posted, ledger backlog grows, and the service reports database connection pool exhaustion.",
     "rootCause": "A retry connection was not released before the ledger insert, exhausting the small database pool.",
     "resolution": "Released retry connections in a finally block, raised the pool alert, and replayed the outbox backlog.",
-    "content": "Ledger posting exhausts database connections. Service: ledger-posting-service. Symptoms: Validated payments cannot be posted, ledger backlog grows, and the service reports database connection pool exhaustion. Root cause: A retry connection was not released before the ledger insert, exhausting the small database pool. Resolution: Released retry connections in a finally block, raised the pool alert, and replayed the outbox backlog."
+    "content": "title: Ledger posting exhausts database connections; service: ledger-posting-service; severity: SEV-1; symptoms: Validated payments cannot be posted, ledger backlog grows, and the service reports database connection pool exhaustion"
   },
   {
     "id": "INC-BNK-1003",
@@ -27,7 +27,7 @@
     "symptoms": "Customers receive 504 responses while initiating transfers and the downstream validation client connection pool is saturated.",
     "rootCause": "HTTP connections to validation workers were not returned after timeout retries.",
     "resolution": "Restarted affected pods, fixed response-body closure, and added connection-pool saturation alerts.",
-    "content": "Payment initiation API returns gateway timeouts. Service: payment-initiation-api. Symptoms: Customers receive 504 responses while initiating transfers and the downstream validation client connection pool is saturated. Root cause: HTTP connections to validation workers were not returned after timeout retries. Resolution: Restarted affected pods, fixed response-body closure, and added connection-pool saturation alerts."
+    "content": "title: Payment initiation API returns gateway timeouts; service: payment-initiation-api; severity: SEV-2; symptoms: Customers receive 504 responses while initiating transfers and the downstream validation client connection pool is saturated"
   },
   {
     "id": "INC-BNK-1004",
@@ -37,7 +37,7 @@
     "symptoms": "New account creation is delayed while KYC callbacks queue for more than fifteen minutes.",
     "rootCause": "The KYC provider rate limit was exceeded during a campaign.",
     "resolution": "Throttled onboarding requests, retried the callback backlog, and configured rate-limit backoff.",
-    "content": "Customer onboarding KYC decisions delayed. Service: customer-onboarding-api. Symptoms: New account creation is delayed while KYC callbacks queue for more than fifteen minutes. Root cause: The KYC provider rate limit was exceeded during a campaign. Resolution: Throttled onboarding requests, retried the callback backlog, and configured rate-limit backoff."
+    "content": "title: Customer onboarding KYC decisions delayed; service: customer-onboarding-api; severity: SEV-2; symptoms: New account creation is delayed while KYC callbacks queue for more than fifteen minutes"
   },
   {
     "id": "INC-BNK-1005",
@@ -47,7 +47,7 @@
     "symptoms": "Customers see balances that do not include recently posted payments while the read replica lags.",
     "rootCause": "The account read replica was overloaded by an unbounded reporting query.",
     "resolution": "Routed critical reads to the primary, cancelled the query, and added replica lag thresholds.",
-    "content": "Account balance reads are stale. Service: account-query-service. Symptoms: Customers see balances that do not include recently posted payments while the read replica lags. Root cause: The account read replica was overloaded by an unbounded reporting query. Resolution: Routed critical reads to the primary, cancelled the query, and added replica lag thresholds."
+    "content": "title: Account balance reads are stale; service: account-query-service; severity: SEV-2; symptoms: Customers see balances that do not include recently posted payments while the read replica lags"
   },
   {
     "id": "INC-BNK-1006",
@@ -57,6 +57,6 @@
     "symptoms": "Daily settlement reports miss their delivery window and report job queue depth increases.",
     "rootCause": "A report worker had insufficient memory for a large settlement batch.",
     "resolution": "Increased worker memory, split batches, and added report-size limits.",
-    "content": "Regulatory settlement report generation delayed. Service: regulatory-reporting-service. Symptoms: Daily settlement reports miss their delivery window and report job queue depth increases. Root cause: A report worker had insufficient memory for a large settlement batch. Resolution: Increased worker memory, split batches, and added report-size limits."
+    "content": "title: Regulatory settlement report generation delayed; service: regulatory-reporting-service; severity: SEV-3; symptoms: Daily settlement reports miss their delivery window and report job queue depth increases"
   }
 ]

@@ -16,7 +16,13 @@ class Incident(ApiModel):
     resolution: str | None = None
     logs: str | None = None
 
-    def searchable_text(self) -> str:
+    def similarity_text(self) -> str:
+        """Fields shared by open and resolved incidents for similarity search.
+
+        Root cause and resolution are deliberately excluded: they are only known
+        after an incident has been resolved and are evidence to return after a
+        match, not attributes to use to find one.
+        """
         return f"title: {self.title}; service: {self.service}; severity: {self.severity}; symptoms: {self.symptoms}"
 
 class DeploymentRecord(ApiModel):

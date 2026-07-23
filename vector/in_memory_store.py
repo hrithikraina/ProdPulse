@@ -15,10 +15,10 @@ class InMemoryIncidentVectorStore:
         self._client, self._entries = client, entries
     @classmethod
     async def build(cls, incidents: list[Incident], client: AzureOpenAIClient) -> "InMemoryIncidentVectorStore":
-        entries = [VectorizedIncident(incident, await client.embed(incident.searchable_text())) for incident in incidents]
+        entries = [VectorizedIncident(incident, await client.embed(incident.similarity_text())) for incident in incidents]
         return cls(client, entries)
     async def search(self, incident: Incident, limit: int) -> list[SimilarIncident]:
-        query_vector = await self._client.embed(incident.searchable_text())
+        query_vector = await self._client.embed(incident.similarity_text())
         matches = [SimilarIncident(incident=entry.incident, similarity=cosine_similarity(query_vector, entry.vector)) for entry in self._entries]
         return qualifying_historical_matches(matches)
     @property
