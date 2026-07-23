@@ -16,6 +16,8 @@ A FastAPI application that retrieves resolved historical incidents from Azure AI
 
 Both analysis and chat responses include an ordered `agentFlow` array, where each item has `agentName` and `status`; it is intended for rendering the executed agent path in the UI. They also include `evidenceSummary`, a concise grounded summary of qualifying historical incidents and all collected agent findings. `codeChanges` is either one actual proposed code snippet (without explanatory text) or `null`. The explanatory remediation belongs in `nextActionSteps` (initial analysis) or `answer` (chat).
 
+Initial analysis responses also include `confidence.rca` and `confidence.recommendation`, each with a deterministic `score` from 0 to 10 and an evidence-based `reason`. The backend derives these from retrieved history, deployment evidence, supplied logs, RCA/code evidence, documented historical resolutions, and clear mitigation steps; the language model does not choose the scores.
+
 - `POST /api/v1/analysis-sessions/{analysisId}/chat` with `{"message": "What code changes and tests are required?"}` asks a follow-up question.
 - `DELETE /api/v1/analysis-sessions/{analysisId}` removes the context immediately. Expired or deleted IDs return HTTP 404.
 

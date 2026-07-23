@@ -8,6 +8,7 @@ from vector.in_memory_store import cosine_similarity
 from vector.azure_ai_search_store import AzureAISearchIncidentStore
 from vector.store import qualifying_historical_matches
 from services.analysis_sessions import AnalysisChatService, AnalysisSessionStore, IncidentToolRegistry
+from services.confidence import assess_confidence
 
 def incident(service: str = "checkout-api") -> Incident:
     return Incident(id="INC-1", title="Timeout", service=service, severity="SEV-1", symptoms="Requests time out")
@@ -21,6 +22,22 @@ def test_similarity_text_excludes_resolution_only_fields() -> None:
 
 def test_cosine_similarity_returns_one_for_identical_vectors() -> None:
     assert cosine_similarity([1.0, 2.0], [1.0, 2.0]) == pytest.approx(1.0)
+
+def test_confidence_uses_evidence_and_caps_scores_at_ten() -> None:
+    historical = Incident(id="INC-OLD", title="Timeout", service="checkout-api", severity="SEV-1", symptoms="Requests time out", rootCause="Pool exhausted", resolution="Roll back safely")
+    assessment = InitialAssessment(summary="", nextActionSteps=["Roll back the faulty release"], rca=[], codeChanges=None)
+    confidence = assess_confidence(
+        incident().model_copy(update={"logs": "ERROR TimeoutException: request timed out"}),
+        [SimilarIncident(incident=historical, similarity=0.99)],
+        [
+            AgentFinding(agentName="DeploymentCheckAgent", status="DEPLOYMENT_FOUND", summary="", evidence=""),
+            AgentFinding(agentName="RcaGraphAgent", status="RCA_COMPLETED", summary="", evidence=""),
+        ],
+        assessment,
+    )
+    assert confidence.rca.score == 10
+    assert confidence.recommendation.score == 10
+    assert "INC-OLD (99%)" in confidence.rca.reason
 
 async def test_low_similarity_runs_deployment_agent() -> None:
     class Store:

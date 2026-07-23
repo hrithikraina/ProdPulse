@@ -58,6 +58,16 @@ class InitialAssessment(ApiModel):
     code_changes: str | None = Field(alias="codeChanges", default=None, description="Actual proposed code only; null when no code is needed.")
 
 
+class ConfidenceScore(ApiModel):
+    score: int = Field(ge=0, le=10)
+    reason: str
+
+
+class ConfidenceAssessment(ApiModel):
+    rca: ConfidenceScore
+    recommendation: ConfidenceScore
+
+
 class IncidentAnalysis(ApiModel):
     analysis_id: str | None = Field(default=None, alias="analysisId")
     incoming_incident: Incident = Field(alias="incomingIncident")
@@ -69,6 +79,12 @@ class IncidentAnalysis(ApiModel):
     code_changes: str | None = Field(alias="codeChanges")
     evidence_summary: str = Field(alias="evidenceSummary")
     agent_flow: list[AgentFlowStep] = Field(alias="agentFlow")
+    confidence: ConfidenceAssessment = Field(
+        default_factory=lambda: ConfidenceAssessment(
+            rca=ConfidenceScore(score=0, reason="No corroborating RCA evidence was collected."),
+            recommendation=ConfidenceScore(score=0, reason="Recommendations require more supporting evidence."),
+        )
+    )
 
 class AnalyzeRequest(ApiModel):
     incident: Incident
