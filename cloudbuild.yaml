@@ -31,7 +31,9 @@ steps:
         "asia-south1",
         "--platform",
         "managed",
-        "--allow-unauthenticated"
+        "--allow-unauthenticated",
+        "--timeout",
+        "60m"
       ]
 
 images:
