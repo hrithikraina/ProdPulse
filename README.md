@@ -86,6 +86,27 @@ Configuration is through environment variables:
 
 Open the API documentation at `http://127.0.0.1:8000/docs`. Send an incident to `POST /api/v1/incidents/analyze` using an `incident` object from `data/new-incident.json`.
 
+## Deploy to Cloud Run
+
+The container listens on the `PORT` value supplied by Cloud Run (8080 by
+default). It cannot start without its Azure OpenAI configuration; with the
+default `RAG_BACKEND=azure-search`, it also needs all three Azure AI Search
+values. Store API keys in Secret Manager and attach them to the service rather
+than putting them in `cloudbuild.yaml` or the image.
+
+```bash
+gcloud run services update prod-pulse --region=asia-south1 \
+  --set-env-vars="AZURE_OPENAI_ENDPOINT=https://YOUR_RESOURCE.openai.azure.com,AZURE_OPENAI_API_VERSION=2024-10-21,AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-5-mini,AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-small,RAG_BACKEND=azure-search,AZURE_SEARCH_ENDPOINT=https://YOUR_SEARCH.search.windows.net,AZURE_SEARCH_INDEX_NAME=historical-incidents,AZURE_SEARCH_API_VERSION=2025-09-01" \
+  --set-secrets="AZURE_OPENAI_API_KEY=azure-openai-api-key:latest,AZURE_SEARCH_API_KEY=azure-search-api-key:latest"
+```
+
+Use the real Secret Manager secret names in place of `azure-openai-api-key` and
+`azure-search-api-key`. If Cloud Run still reports a port failure, open the
+revision log: a message such as `AZURE_OPENAI_ENDPOINT must be configured.` or
+`AZURE_SEARCH_ENDPOINT, AZURE_SEARCH_API_KEY, and AZURE_SEARCH_INDEX_NAME must
+be configured` identifies the missing startup setting. Rebuild and redeploy
+after changing the Dockerfile.
+
 To run the tests:
 
 ```bash
