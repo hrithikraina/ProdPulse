@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 
 from agents.deployment_check import DeploymentCheckAgent
 from agents.code_investigation import CodeInvestigationAgent
@@ -67,6 +68,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 app = FastAPI(title="Incident Management API", version="1.0.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def service_from(request: Request) -> IncidentManagementService:
