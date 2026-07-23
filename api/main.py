@@ -22,9 +22,11 @@ from agents.code_investigation import CodeInvestigationAgent
 from core.config import Settings
 from domain.models import AnalysisChatRequest, AnalysisChatResponse, AnalyzeRequest, HealthResponse, IncidentAnalysis
 from repositories.json_repository import DeploymentHistoryRepository, JsonIncidentRepository
+from repositories.confluence_repository import ConfluenceCloudRepository
 from agents.chat_evidence_agents import ChatEvidenceAgents
 from services.advisor import IncidentAdvisor
 from services.analysis_sessions import AnalysisChatService, AnalysisSessionStore, IncidentToolRegistry
+from services.confluence_summarizer import ConfluenceEvidenceSummarizer
 from services.incident_management import IncidentManagementService
 from services.azure_openai import AzureOpenAIClient
 from vector.in_memory_store import InMemoryIncidentVectorStore
@@ -60,11 +62,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         raise RuntimeError("RAG_BACKEND must be either 'azure-search' or 'local'.")
     deployment_agent = DeploymentCheckAgent(DeploymentHistoryRepository(settings.data_directory))
+    confluence_repository = (
+        ConfluenceCloudRepository(settings.confluence) if settings.confluence is not None else None
+    )
     app.state.incident_service = IncidentManagementService(
         vector_store=vector_store,
         advisor=IncidentAdvisor(azure_openai),
         deployment_agent=deployment_agent,
         code_agent=CodeInvestigationAgent(),
+        confluence_repository=confluence_repository,
+        confluence_summarizer=ConfluenceEvidenceSummarizer(azure_openai),
     )
     app.state.analysis_sessions = AnalysisSessionStore()
     app.state.analysis_chat_service = AnalysisChatService(

@@ -12,7 +12,7 @@ from typing import Any, Awaitable, Callable
 from uuid import uuid4
 
 from agents.deployment_check import DeploymentCheckAgent
-from domain.models import AgentFinding, AgentFlowStep, AnalysisChatResponse, ChatNarrative, Incident, IncidentAnalysis, SimilarIncident
+from domain.models import AgentFinding, AgentFlowStep, AnalysisChatResponse, ChatNarrative, ConfluenceSource, Incident, IncidentAnalysis, SimilarIncident
 from agents.chat_evidence_agents import ChatEvidenceAgents
 from services.azure_openai import AzureOpenAIClient
 from vector.store import IncidentStore
@@ -25,6 +25,7 @@ class AnalysisSession:
     incident: Incident
     historical_incidents: list[SimilarIncident]
     agent_findings: list[AgentFinding]
+    confluence_sources: list[ConfluenceSource]
     initial_assessment: str
     recent_messages: list[dict[str, Any]] = field(default_factory=list)
     expires_at: datetime = field(default_factory=lambda: datetime.now(UTC) + timedelta(minutes=30))
@@ -47,6 +48,7 @@ class AnalysisSessionStore:
                 incident=analysis.incoming_incident,
                 historical_incidents=list(analysis.similar_incidents),
                 agent_findings=list(analysis.agent_findings),
+                confluence_sources=list(analysis.confluence_sources),
                 initial_assessment=json.dumps({
                     "summary": analysis.summary,
                     "nextActionSteps": analysis.next_action_steps,
@@ -264,12 +266,24 @@ class AnalysisChatService:
     def _system_message(session: AnalysisSession) -> dict[str, str]:
         history = "\n".join(f"- {item.incident.id}: rootCause={item.incident.root_cause}; resolution={item.incident.resolution}" for item in session.historical_incidents) or "None"
         findings = "\n".join(f"- {item.agent_name}: {item.summary} Evidence: {item.evidence}" for item in session.agent_findings) or "None"
-        evidence = f"Incoming incident: {session.incident.similarity_text()}\nInitial structured assessment: {session.initial_assessment}\nHistorical evidence:\n{history}\nAgent findings:\n{findings}"
+        confluence = "\n".join(
+            (
+                f"- pageId={item.page_id}, title={item.title}, url={item.url}, "
+                + (
+                    f"issueSummary={item.issue_summary}"
+                    if item.issue_summary
+                    else f"excerptFallback={item.excerpt}"
+                )
+            )
+            for item in session.confluence_sources
+        ) or "None"
+        evidence = f"Incoming incident: {session.incident.similarity_text()}\nInitial structured assessment: {session.initial_assessment}\nHistorical evidence:\n{history}\nAgent findings:\n{findings}\nConfluence sources:\n{confluence}"
         return {"role": "system", "content": "You are Prod+ Incident Advisor. Use only evidence in this message. Answer directly when it is enough; otherwise request only an approved tool needed to obtain missing evidence. Never claim access to production, execute changes, deploy, rollback, modify source, change balances, or contact counterparties. Clearly distinguish evidence from hypotheses and cite evidence source IDs/paths in your answer. For your final answer, return ONLY valid JSON with answer, agentSummary (one short combined summary of the evidence agents used in this turn), and codeChanges (a complete proposed code snippet only, without Markdown fences, or null).\n\nCURRENT SESSION EVIDENCE:\n" + evidence}
 
     @staticmethod
     def _session_sources(session: AnalysisSession) -> list[str]:
         sources = [item.incident.id for item in session.historical_incidents]
+        sources.extend(item.url for item in session.confluence_sources)
         for finding in session.agent_findings:
             sources.extend(_source_ids(finding.evidence))
         return sources
