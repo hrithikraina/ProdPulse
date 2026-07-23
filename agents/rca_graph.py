@@ -39,10 +39,6 @@ if hasattr(sys.stdout, "reconfigure"):
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BASE_DIR = PROJECT_ROOT
 load_dotenv(PROJECT_ROOT / ".env")
-logging.basicConfig(
-    level=os.getenv("RCA_LOG_LEVEL", "INFO").upper(),
-    format="%(asctime)s %(levelname)s %(name)s - %(message)s",
-)
 LOGGER = logging.getLogger("rca.database_routing")
 ARCHITECTURE = json.loads((PROJECT_ROOT / "data" / "architecture_context.json").read_text(encoding="utf-8"))
 COMPONENTS = list(ARCHITECTURE["components"])

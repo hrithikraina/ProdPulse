@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -15,6 +16,8 @@ from domain.models import AgentFinding, AgentFlowStep, AnalysisChatResponse, Cha
 from repositories.code_repository import CodeRepository
 from services.azure_openai import AzureOpenAIClient
 from vector.store import IncidentStore
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -37,6 +40,7 @@ class AnalysisSessionStore:
 
     async def create(self, analysis: IncidentAnalysis) -> str:
         session_id = f"analysis-{uuid4()}"
+        logger.info(f"Creating new analysis session: {session_id} for incident: {analysis.incoming_incident.id}")
         async with self._lock:
             self._purge_expired()
             self._sessions[session_id] = AnalysisSession(
@@ -51,25 +55,39 @@ class AnalysisSessionStore:
                 }),
                 expires_at=datetime.now(UTC) + self._ttl,
             )
+        logger.info(f"Session {session_id} successfully created.")
         return session_id
 
     async def get(self, session_id: str) -> AnalysisSession | None:
         async with self._lock:
             self._purge_expired()
-            return self._sessions.get(session_id)
+            session = self._sessions.get(session_id)
+            if session:
+                logger.info(f"Session {session_id} retrieved successfully. Expires at: {session.expires_at}")
+            else:
+                logger.warning(f"Session {session_id} not found or has expired.")
+            return session
 
     async def delete(self, session_id: str) -> bool:
         async with self._lock:
-            return self._sessions.pop(session_id, None) is not None
+            removed = self._sessions.pop(session_id, None) is not None
+            if removed:
+                logger.info(f"Deleted session {session_id}")
+            else:
+                logger.warning(f"Failed to delete session {session_id}: session does not exist.")
+            return removed
 
     async def touch(self, session: AnalysisSession) -> None:
         """Extend the inactivity timeout after a successful chat request."""
         async with self._lock:
             session.expires_at = datetime.now(UTC) + self._ttl
+            logger.info(f"Session touch: extended expires_at to {session.expires_at}")
 
     def _purge_expired(self) -> None:
         now = datetime.now(UTC)
-        for session_id in [key for key, value in self._sessions.items() if value.expires_at <= now]:
+        expired_keys = [key for key, value in self._sessions.items() if value.expires_at <= now]
+        for session_id in expired_keys:
+            logger.info(f"Purging expired session: {session_id} (expired at {self._sessions[session_id].expires_at})")
             del self._sessions[session_id]
 
 
@@ -106,10 +124,18 @@ class IncidentToolRegistry:
         ]
 
     async def execute(self, name: str, session: AnalysisSession, arguments: dict[str, Any]) -> tuple[AgentFinding, list[str]]:
+        logger.info(f"Tool registry executing: {name} with arguments: {arguments}")
         handler = self._handlers.get(name)
         if not handler:
+            logger.error(f"Tool execution failed: '{name}' is not in the approved registry.")
             raise ValueError(f"Tool '{name}' is not in the approved registry.")
-        return await handler(session, arguments)
+        try:
+            result = await handler(session, arguments)
+            logger.info(f"Tool execution completed: {name}. Finding status: {result[0].status}")
+            return result
+        except Exception as error:
+            logger.error(f"Error executing tool {name}: {error}", exc_info=True)
+            raise
 
     @staticmethod
     def _definition(name: str, description: str, properties: dict[str, Any]) -> dict[str, Any]:
@@ -177,20 +203,24 @@ class AnalysisChatService:
         self._client = client
 
     async def chat(self, analysis_id: str, message: str) -> AnalysisChatResponse | None:
+        logger.info(f"Starting chat turn for session {analysis_id}")
         session = await self._sessions.get(analysis_id)
         if session is None:
+            logger.warning(f"Chat turn failed: session {analysis_id} not found.")
             return None
         messages = [self._system_message(session), *session.recent_messages, {"role": "user", "content": message}]
         calls: list[str] = []
         new_findings: list[AgentFinding] = []
         flow: list[AgentFlowStep] = []
         sources = self._session_sources(session)
-        for _ in range(3):
+        for loop_idx in range(3):
+            logger.info(f"Submitting chat messages to Azure OpenAI (turn loop {loop_idx + 1}/3)")
             response = await self._client.chat_with_tools(messages, self._registry.definitions())
             assistant_message = response["message"]
             messages.append(assistant_message)
             tool_calls = assistant_message.get("tool_calls") or []
             if not tool_calls:
+                logger.info("Azure OpenAI responded without requesting any tool calls. Finalizing narrative response.")
                 narrative = self._narrative(
                     str(assistant_message.get("content") or "Evidence is insufficient to answer that safely.").strip(),
                     new_findings,
@@ -198,7 +228,10 @@ class AnalysisChatService:
                 session.recent_messages = (messages[1:])[-12:]
                 await self._sessions.touch(session)
                 flow.append(AgentFlowStep(agentName="ProdPlusIncidentAdvisor", status="COMPLETED"))
+                logger.info(f"Chat turn completed successfully for session {analysis_id}.")
                 return AnalysisChatResponse(answer=narrative.answer, agentSummary=narrative.agent_summary, evidenceSummary=self._evidence_summary(session), codeChanges=narrative.code_changes, agentFlow=flow, sources=list(dict.fromkeys(sources)), newFindings=new_findings, agentCalls=calls)
+            
+            logger.info(f"Azure OpenAI requested {len(tool_calls)} tool call(s). Running tools.")
             for call in tool_calls:
                 name = call.get("function", {}).get("name", "")
                 try:
@@ -213,8 +246,10 @@ class AnalysisChatService:
                     flow.append(AgentFlowStep(agentName=finding.agent_name, status=finding.status))
                     content = finding.model_dump_json(by_alias=True)
                 except (ValueError, json.JSONDecodeError, RuntimeError) as error:
+                    logger.error(f"Error handling tool call {name} in chat loop: {error}", exc_info=True)
                     content = json.dumps({"error": str(error)})
                 messages.append({"role": "tool", "tool_call_id": call.get("id"), "content": content})
+        logger.warning(f"Exhausted maximum tool call loop iterations (3) for session {analysis_id}. Returning incomplete response.")
         session.recent_messages = (messages[1:])[-12:]
         await self._sessions.touch(session)
         flow.append(AgentFlowStep(agentName="ProdPlusIncidentAdvisor", status="INCOMPLETE"))
