@@ -7,7 +7,7 @@
     "symptoms": "Payments submitted after the morning release stay pending and validation workers crash while selecting a sanctions rule.",
     "rootCause": null,
     "resolution": null,
-    "logs": "2026-07-17T09:01:13Z INFO transaction-validation-service validation-812 Evaluating risk rules payment_id=PAY-90021\n2026-07-17T09:01:13Z ERROR transaction-validation-service validation-812 java.lang.IndexOutOfBoundsException: Index: 2 Size: 2 while selecting sanctions rule for payment_id=PAY-90021"
+    "logs": "2026-07-23T09:01:13Z INFO transaction-validation-service validation-812 Evaluating risk rules payment_id=PAY-90021\n2026-07-23T09:01:13Z ERROR transaction-validation-service validation-812 java.lang.IndexOutOfBoundsException: Index: 2 Size: 2 while selecting sanctions rule for payment_id=PAY-90021"
   },
   {
     "id": "INC-NEW-BNK-02",
@@ -17,7 +17,7 @@
     "symptoms": "Validated payments fail to post and the ledger outbox backlog grows after database connection acquisition errors.",
     "rootCause": null,
     "resolution": null,
-    "logs": "2026-07-17T09:01:15Z INFO ledger-posting-service ledger-441 Posting double-entry transaction payment_id=PAY-90021\n2026-07-17T09:01:15Z ERROR ledger-posting-service ledger-441 DatabaseConnectionPoolExhaustedException: connection pool exhausted: active=2, max=2 payment_id=PAY-90021"
+    "logs": "2026-07-23T09:01:15Z INFO ledger-posting-service ledger-441 Posting double-entry transaction payment_id=PAY-90021\n2026-07-23T09:01:15Z ERROR ledger-posting-service ledger-441 DatabaseConnectionPoolExhaustedException: connection pool exhausted: active=2, max=2 payment_id=PAY-90021"
   },
   {
     "id": "INC-NEW-BNK-03",
@@ -27,5 +27,25 @@
     "symptoms": "A customer sees an old available balance after a completed transfer and account read latency is elevated.",
     "rootCause": null,
     "resolution": null
+  },
+  {
+    "id": "INC-NEW-01",
+    "title": "Payment validation failures",
+    "service": "transaction-validation-service",
+    "severity": "SEV-1",
+    "symptoms": "Payments fail for some sanctions-rule responses",
+    "rootCause": null,
+    "resolution": null,
+    "logs": "2026-07-23T09:01:20Z ERROR transaction-validation-service validation-813 IndexOutOfBoundsException at RuleResponseMapper.java:42"
+  },
+  {
+    "id": "INC-NEW-02",
+    "title": "Risk-rule evaluation crashes during payment validation",
+    "service": "transaction-validation-service",
+    "severity": "SEV-1",
+    "symptoms": "Payment validation crashes with an index-out-of-bounds error while selecting the sanctions decision, leaving the transaction unresolved.",
+    "rootCause": null,
+    "resolution": null,
+    "logs": "2026-07-23T10:15:27.151Z INFO transaction-validation-service Evaluating risk rules payment_id=PAY-482912\n2026-07-23T10:15:27.151Z ERROR transaction-validation-service request_id=REQ-1003 payment_id=PAY-482912 error_code=IndexOutOfBoundsException Index: 2 Size: 2\njava.lang.IndexOutOfBoundsException: Index: 2 Size: 2\n    at java.base/java.util.ImmutableCollections$AbstractImmutableList.outOfBounds(ImmutableCollections.java:333)\n    at java.base/java.util.ImmutableCollections$List12.get(ImmutableCollections.java:585)\n    at com.novabank.validation.TransactionValidationService.validate(TransactionValidationService.java:11)\n    at com.novabank.validation.TransactionValidationApplication.main(TransactionValidationApplication.java:16)"
   }
 ]

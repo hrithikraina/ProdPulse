@@ -29,6 +29,9 @@ from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
+from agents.log_context import fetch_log_context
+from repositories.log_repository import LogRepository, build_log_repository
+
 
 # Windows terminals often default to CP1252, which cannot render characters
 # such as arrows that may appear in model-generated RCA summaries.
@@ -206,6 +209,50 @@ async def text(prompt: str) -> str:
 
 
 
+
+
+def make_log_context_node(repository: LogRepository):
+    """Enrich the raw anchor logs before routing, using agents/log_context.py.
+
+    Independent of this graph's LLM router: resolve_log_source() works directly off the log
+    text (repository-name matching / the anchor's own <service> field), not a routing
+    decision, so it's safe to run before router even runs. Once error_logs is replaced with
+    the tagged, cross-service-correlated text, router, database_routing_matches() (via
+    make_component_agent), and the summarizer all see the richer context for free — none of
+    them need to change to benefit from this.
+
+    A factory (mirrors make_component_agent's pattern) so the repository can be swapped for a
+    fake in tests without needing a live backend or env vars.
+    """
+
+    def expand_log_context(state: StudyState) -> dict:
+        try:
+            result = fetch_log_context(state["error_logs"], repository, state["architecture"])
+        except (RuntimeError, KeyError) as error:
+            LOGGER.warning(
+                "Log-context expansion unavailable; continuing with the original anchor logs: %s", error
+            )
+            return {}
+
+        if result.status != "LOG_CONTEXT_FOUND":
+            # NO LOG FOUND: keep the incident-provided error_logs exactly as given — do not
+            # override state with an empty/partial result. Downstream nodes (router,
+            # make_component_agent, summarizer) see the same logs the incident arrived with.
+            LOGGER.info("NO LOG FOUND during log-context expansion (%s); keeping the incident-provided logs unchanged.", result.status)
+            return {}
+
+        lines = [f"[{result.source}] {line}" for line in result.matched_lines]
+        for correlated in result.correlated_sources:
+            lines.extend(f"[{correlated.source}] {line}" for line in correlated.matched_lines)
+
+        LOGGER.info(
+            "Logs enriched by log-context expansion: added %d line(s) from %d source(s) before routing.",
+            len(lines),
+            1 + len(result.correlated_sources),
+        )
+        return {"error_logs": "\n".join(lines)}
+
+    return expand_log_context
 
 
 async def router(state: StudyState) -> dict:
@@ -661,6 +708,7 @@ async def summarizer(state: StudyState) -> dict:
 
 def build_graph():
     graph = StateGraph(StudyState)
+    graph.add_node("expand_log_context", make_log_context_node(build_log_repository(PROJECT_ROOT / "data")))
     graph.add_node("router", router)
     for component in COMPONENTS:
         graph.add_node(f"investigate_{component}", make_component_agent(component))
@@ -674,7 +722,8 @@ def build_graph():
     graph.add_node("database_round_2", database_round_2)
     graph.add_node("summarizer", summarizer)
 
-    graph.add_edge(START, "router")
+    graph.add_edge(START, "expand_log_context")
+    graph.add_edge("expand_log_context", "router")
     graph.add_conditional_edges("router", routes)
 
     # Component nodes plan the optional specialist-agent work.
@@ -706,22 +755,23 @@ def print_agent_flow(result: StudyState) -> None:
 
     print("\nAgent flow followed:")
     print("START")
-    print("â””â”€â”€ router")
-    print(f"    â”œâ”€â”€ selected: {', '.join(ordered_components) or 'none'}")
+    print("â””â”€â”€ expand_log_context")
+    print("    â””â”€â”€ router")
+    print(f"        â”œâ”€â”€ selected: {', '.join(ordered_components) or 'none'}")
 
     for index, component in enumerate(ordered_components):
         is_last = index == len(ordered_components) - 1
         branch = "â””â”€â”€" if is_last else "â”œâ”€â”€"
-        print(f"    {branch} investigate_{component} (parallel branch)")
+        print(f"        {branch} investigate_{component} (parallel branch)")
 
     evidence_agents = active_evidence_agents(result)
     if evidence_agents:
-        print("    â””â”€â”€ join_component_requests")
-        print(f"        â””â”€â”€ round 1: {', '.join(evidence_agents)}")
-        print("        â””â”€â”€ join_evidence_round_1")
-        print(f"        â””â”€â”€ round 2: {', '.join(evidence_agents)}")
-    print("    â””â”€â”€ summarizer (after active evidence agents)")
-    print("        â””â”€â”€ END")
+        print("        â””â”€â”€ join_component_requests")
+        print(f"            â””â”€â”€ round 1: {', '.join(evidence_agents)}")
+        print("            â””â”€â”€ join_evidence_round_1")
+        print(f"            â””â”€â”€ round 2: {', '.join(evidence_agents)}")
+    print("        â””â”€â”€ summarizer (after active evidence agents)")
+    print("            â””â”€â”€ END")
 
 
 

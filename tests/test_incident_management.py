@@ -45,7 +45,10 @@ async def test_low_similarity_runs_deployment_agent() -> None:
             return [SimilarIncident(incident=incident(), similarity=0.4)]
     class Advisor:
         async def recommend(self, _incoming, _matches, findings) -> InitialAssessment:
-            assert len(findings) == 1
+            # DeploymentCheckAgent always runs; ConfluenceKnowledgeAgent also always runs and
+            # degrades to CONFLUENCE_NOT_CONFIGURED when no confluence_repository is supplied
+            # (see IncidentManagementService._confluence_evidence).
+            assert len(findings) == 2
             return InitialAssessment(summary="Investigate the release.", nextActionSteps=["Check deployment"], rca=["Release is a hypothesis."], codeChanges=None)
     class DeploymentAgent:
         def investigate(self, _incident: Incident) -> AgentFinding:
@@ -56,6 +59,7 @@ async def test_low_similarity_runs_deployment_agent() -> None:
     service = IncidentManagementService(Store(), Advisor(), DeploymentAgent(), CodeAgent())
     result = await service.analyze(incident("reporting-api"))
     assert result.agent_findings[0].status == "DEPLOYMENT_FOUND"
+    assert result.agent_findings[1].status == "CONFLUENCE_NOT_CONFIGURED"
     assert result.summary == "Investigate the release."
     assert result.next_action_steps == ["Check deployment"]
 
