@@ -28,5 +28,13 @@
 
   {"service": "ledger-posting-service", "timestamp": "2026-07-23T10:15:05.000+00:00", "level": "INFO", "message": "Reserving provisional funds for payment_id=PAY-482912 amount=540.75"},
   {"service": "ledger-posting-service", "timestamp": "2026-07-23T10:15:29.100+00:00", "level": "WARN", "message": "Reversing provisional hold for payment_id=PAY-482912 after upstream validation failure"},
-  {"service": "ledger-posting-service", "timestamp": "2026-07-23T10:15:29.600+00:00", "level": "INFO", "message": "Released reservation for payment_id=PAY-482912"}
+  {"service": "ledger-posting-service", "timestamp": "2026-07-23T10:15:29.600+00:00", "level": "INFO", "message": "Released reservation for payment_id=PAY-482912"},
+
+  {"service": "ledger-posting-service", "timestamp": "2026-07-24T10:04:50.000+00:00", "level": "INFO", "message": "Reserving provisional funds for payment_id=PAY-90045 amount=610.20"},
+  {"service": "transaction-validation-service", "timestamp": "2026-07-24T10:05:00.000+00:00", "level": "INFO", "message": "Received validation request request_id=REQ-1010 payment_id=PAY-90045"},
+  {"service": "transaction-validation-service", "timestamp": "2026-07-24T10:05:13.500+00:00", "level": "INFO", "message": "Evaluating risk rules payment_id=PAY-90045"},
+  {"service": "transaction-validation-service", "timestamp": "2026-07-24T10:05:14Z", "level": "ERROR", "message": "request_id=REQ-1010 payment_id=PAY-90045 error_code=IndexOutOfBoundsException Index: 2 Size: 2"},
+  {"service": "transaction-validation-service", "timestamp": "2026-07-24T10:05:15.400+00:00", "level": "WARN", "message": "Marking payment_id=PAY-90045 as failed after risk evaluation crash"},
+  {"service": "ledger-posting-service", "timestamp": "2026-07-24T10:05:29.100+00:00", "level": "WARN", "message": "Reversing provisional hold for payment_id=PAY-90045 after upstream validation failure"},
+  {"service": "ledger-posting-service", "timestamp": "2026-07-24T10:05:29.600+00:00", "level": "INFO", "message": "Released reservation for payment_id=PAY-90045"}
 ]
