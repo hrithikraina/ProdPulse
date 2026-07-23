@@ -1,0 +1,32 @@
+[
+  {"service": "transaction-validation-service", "timestamp": "2026-07-23T08:58:40+00:00", "level": "INFO", "message": "Started sanctions rule refresh cycle"},
+  {"service": "transaction-validation-service", "timestamp": "2026-07-23T08:59:02+00:00", "level": "INFO", "message": "Loaded 2 sanctions rules for region EU"},
+  {"service": "transaction-validation-service", "timestamp": "2026-07-23T09:00:51+00:00", "level": "INFO", "message": "Validating payment payment_id=PAY-90020"},
+  {"service": "transaction-validation-service", "timestamp": "2026-07-23T09:01:02+00:00", "level": "INFO", "message": "Validated payment_id=PAY-90020 result=PASS"},
+  {"service": "transaction-validation-service", "timestamp": "2026-07-23T09:01:13+00:00", "level": "INFO", "message": "Evaluating risk rules payment_id=PAY-90021"},
+  {"service": "transaction-validation-service", "timestamp": "2026-07-23T09:01:13+00:00", "level": "ERROR", "message": "java.lang.IndexOutOfBoundsException: Index: 2 Size: 2 while selecting sanctions rule for payment_id=PAY-90021"},
+  {"service": "transaction-validation-service", "timestamp": "2026-07-23T09:01:14+00:00", "level": "WARN", "message": "Marking payment_id=PAY-90021 as pending after validation worker crash"},
+  {"service": "transaction-validation-service", "timestamp": "2026-07-23T09:01:40+00:00", "level": "INFO", "message": "Validating payment payment_id=PAY-90022"},
+  {"service": "transaction-validation-service", "timestamp": "2026-07-23T09:10:00+00:00", "level": "INFO", "message": "Started sanctions rule refresh cycle"},
+
+  {"service": "ledger-posting-service", "timestamp": "2026-07-23T08:59:30+00:00", "level": "INFO", "message": "Connection pool initialized max=2"},
+  {"service": "ledger-posting-service", "timestamp": "2026-07-23T09:00:48+00:00", "level": "INFO", "message": "Posting double-entry transaction payment_id=PAY-90020"},
+  {"service": "ledger-posting-service", "timestamp": "2026-07-23T09:00:49+00:00", "level": "INFO", "message": "Posted payment_id=PAY-90020 active=1 max=2"},
+  {"service": "ledger-posting-service", "timestamp": "2026-07-23T09:01:10+00:00", "level": "WARN", "message": "Connection acquisition slow for payment_id=PAY-90021 waited_ms=420 active=2 max=2"},
+  {"service": "ledger-posting-service", "timestamp": "2026-07-23T09:01:15+00:00", "level": "INFO", "message": "Posting double-entry transaction payment_id=PAY-90021"},
+  {"service": "ledger-posting-service", "timestamp": "2026-07-23T09:01:15+00:00", "level": "ERROR", "message": "DatabaseConnectionPoolExhaustedException: connection pool exhausted: active=2, max=2 payment_id=PAY-90021"},
+  {"service": "ledger-posting-service", "timestamp": "2026-07-23T09:01:16+00:00", "level": "WARN", "message": "Queued payment_id=PAY-90021 to ledger outbox for retry"},
+  {"service": "ledger-posting-service", "timestamp": "2026-07-23T09:02:20+00:00", "level": "WARN", "message": "Ledger outbox backlog depth=14"},
+  {"service": "ledger-posting-service", "timestamp": "2026-07-23T09:20:00+00:00", "level": "INFO", "message": "Connection pool initialized max=2"},
+
+  {"service": "account-query-service", "timestamp": "2026-07-23T09:05:00+00:00", "level": "INFO", "message": "Serving account balance from read replica lag_ms=1800"},
+
+  {"service": "transaction-validation-service", "timestamp": "2026-07-23T10:14:50.000+00:00", "level": "INFO", "message": "Received validation request request_id=REQ-1003 payment_id=PAY-482912"},
+  {"service": "transaction-validation-service", "timestamp": "2026-07-23T10:15:27.151+00:00", "level": "INFO", "message": "Evaluating risk rules payment_id=PAY-482912"},
+  {"service": "transaction-validation-service", "timestamp": "2026-07-23T10:15:27.151+00:00", "level": "ERROR", "message": "request_id=REQ-1003 payment_id=PAY-482912 error_code=IndexOutOfBoundsException Index: 2 Size: 2"},
+  {"service": "transaction-validation-service", "timestamp": "2026-07-23T10:15:28.400+00:00", "level": "WARN", "message": "Marking payment_id=PAY-482912 as failed after risk evaluation crash"},
+
+  {"service": "ledger-posting-service", "timestamp": "2026-07-23T10:15:05.000+00:00", "level": "INFO", "message": "Reserving provisional funds for payment_id=PAY-482912 amount=540.75"},
+  {"service": "ledger-posting-service", "timestamp": "2026-07-23T10:15:29.100+00:00", "level": "WARN", "message": "Reversing provisional hold for payment_id=PAY-482912 after upstream validation failure"},
+  {"service": "ledger-posting-service", "timestamp": "2026-07-23T10:15:29.600+00:00", "level": "INFO", "message": "Released reservation for payment_id=PAY-482912"}
+]

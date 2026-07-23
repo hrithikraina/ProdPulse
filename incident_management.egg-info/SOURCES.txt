@@ -4,6 +4,7 @@ agents/__init__.py
 agents/chat_evidence_agents.py
 agents/code_investigation.py
 agents/deployment_check.py
+agents/log_context.py
 agents/rca_graph.py
 api/__init__.py
 api/main.py
@@ -18,14 +19,18 @@ incident_management.egg-info/requires.txt
 incident_management.egg-info/top_level.txt
 repositories/__init__.py
 repositories/code_repository.py
+repositories/confluence_repository.py
 repositories/json_repository.py
+repositories/log_repository.py
 services/__init__.py
 services/advisor.py
 services/analysis_sessions.py
 services/azure_openai.py
 services/confidence.py
+services/confluence_summarizer.py
 services/incident_management.py
 tests/test_incident_management.py
+tests/test_log_context.py
 vector/__init__.py
 vector/azure_ai_search_store.py
 vector/in_memory_store.py

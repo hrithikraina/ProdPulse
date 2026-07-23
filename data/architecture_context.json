@@ -47,6 +47,9 @@
             "repo": "transaction-validation-service",
             "branch": "main"
           },
+          "logging": {
+            "source": "transaction-validation-service"
+          },
           "keywords": [
             "validation",
             "validate",
@@ -56,6 +59,9 @@
         },
         {
           "name": "ledger-posting",
+          "logging": {
+            "source": "ledger-posting-service"
+          },
           "keywords": [
             "ledger",
             "posting",
