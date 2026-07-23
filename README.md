@@ -8,15 +8,19 @@ A FastAPI application that retrieves resolved historical incidents from Azure AI
 2. An Azure AI Search blob indexer uses the Azure OpenAI embedding skill to index each incident's `content` field. `content` must contain only `title`, `service`, `severity`, and `symptoms`—the fields present for both new and resolved incidents.
 3. `POST /api/v1/incidents/analyze` runs a hybrid search: exact terms over `title`, `symptoms`, `service`, and `content`, plus a query-time text-to-vector search over `contentVector`.
 4. The Deployment Check Agent always adds the latest relevant deployment; the Code Investigation Agent runs whenever logs are present.
-5. The chat model receives only the new incident, retrieved history, and those findings, then produces an evidence-bounded RCA hypothesis and safe next steps.
+5. When configured, the Confluence Knowledge Agent performs a bounded, allow-listed, read-only page search and retrieves rendered page excerpts as supporting evidence.
+6. Azure OpenAI uses each retrieved page to explain a possible cause of the current incident and any supported investigation or solution, based only on the incident title, service, and symptoms. Raw excerpts are used only when this analysis is unavailable.
+7. The recommendation model receives the new incident, retrieved history, and summarized findings, then produces an evidence-bounded RCA hypothesis and safe next steps.
 
 ## Temporary follow-up chat
 
-`POST /api/v1/incidents/analyze` now returns an `analysisId`. It creates an in-memory session containing the incoming incident, retrieved historical incidents, agent findings, structured initial assessment (`summary`, `nextActionSteps`, `rca`, and `codeChanges`), and the latest chat messages. It is not written to Cosmos DB or any other database, expires after 30 minutes of inactivity, and disappears on application restart.
+`POST /api/v1/incidents/analyze` now returns an `analysisId`. It creates an in-memory session containing the incoming incident, retrieved historical incidents, agent findings, bounded Confluence source snapshots, structured initial assessment (`summary`, `nextActionSteps`, `rca`, and `codeChanges`), and the latest chat messages. It is not written to Cosmos DB or any other database, expires after 30 minutes of inactivity, and disappears on application restart.
 
 Both analysis and chat responses include an ordered `agentFlow` array, where each item has `agentName` and `status`; it is intended for rendering the executed agent path in the UI. They also include `evidenceSummary`, a concise grounded summary of qualifying historical incidents and all collected agent findings. `codeChanges` is either one actual proposed code snippet (without explanatory text) or `null`. The explanatory remediation belongs in `nextActionSteps` (initial analysis) or `answer` (chat).
 
 Initial analysis responses also include `confidence.rca` and `confidence.recommendation`, each with a deterministic `score` from 0 to 10 and an evidence-based `reason`. The backend derives these from retrieved history, deployment evidence, supplied logs, RCA/code evidence, documented historical resolutions, and clear mitigation steps; the language model does not choose the scores.
+
+Initial responses include an additive `confluenceSources` array. Each source contains `pageId`, `title`, `url`, `spaceKey`, optional `lastModified`, a plain-text `excerpt` limited to 4,000 characters, and an optional `issueSummary` limited to 1,000 characters describing a possible incident cause and Confluence-supported investigation or solution. The field is `[]` when no usable page is available.
 
 - `POST /api/v1/analysis-sessions/{analysisId}/chat` with `{"message": "What code changes and tests are required?"}` asks a follow-up question.
 - `DELETE /api/v1/analysis-sessions/{analysisId}` removes the context immediately. Expired or deleted IDs return HTTP 404.
@@ -85,6 +89,11 @@ Configuration is through environment variables:
 - `AZURE_SEARCH_API_VERSION` (default `2025-09-01`)
 - `DATA_DIRECTORY` (default `./data`)
 - `GITHUB_REPOSITORY` and `GITHUB_TOKEN` — optional. Set both to search your real `owner/repository` with GitHub's code-search API. Without them, the demo uses `data/simulated-github-code.json`.
+
+- `CONFLUENCE_BASE_URL`, `CONFLUENCE_EMAIL`, `CONFLUENCE_API_TOKEN`, and `CONFLUENCE_SPACE_KEYS` are optional as a group. They enable direct Confluence Cloud REST retrieval using Basic authentication with an email and API token. `CONFLUENCE_SPACE_KEYS` is a comma-separated allow-list.
+- `CONFLUENCE_RESULT_LIMIT` defaults to `3` and is clamped to `1`-`10`.
+
+Confluence access is read-only, allow-listed, bounded, and best-effort. Queries and issue-focused summaries use only incident title, service, and symptoms; raw logs are never sent to Confluence or the summarization prompt. Authentication, authorization, rate-limit, timeout, malformed-response, and page-fetch failures produce a bounded `CONFLUENCE_BACKEND_UNAVAILABLE` finding while the rest of the analysis continues. If summarization fails, bounded excerpts remain available as evidence. Follow-up chat reuses the initial summaries, with excerpt fallback, and never performs a new Confluence request.
 
 Open the API documentation at `http://127.0.0.1:8000/docs`. Send an incident to `POST /api/v1/incidents/analyze` using an `incident` object from `data/new-incident.json`.
 

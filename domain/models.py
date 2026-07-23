@@ -50,6 +50,16 @@ class AgentFlowStep(ApiModel):
     status: str
 
 
+class ConfluenceSource(ApiModel):
+    page_id: str = Field(alias="pageId")
+    title: str
+    url: str
+    space_key: str = Field(alias="spaceKey")
+    last_modified: datetime | None = Field(default=None, alias="lastModified")
+    excerpt: str = Field(min_length=1, max_length=4000)
+    issue_summary: str | None = Field(default=None, alias="issueSummary", max_length=1000)
+
+
 class InitialAssessment(ApiModel):
     """Grounded, UI-ready result of the initial evidence analysis."""
     summary: str = Field(description="Short summary of all agent findings.")
@@ -73,6 +83,7 @@ class IncidentAnalysis(ApiModel):
     incoming_incident: Incident = Field(alias="incomingIncident")
     similar_incidents: list[SimilarIncident] = Field(alias="similarIncidents")
     agent_findings: list[AgentFinding] = Field(alias="agentFindings")
+    confluence_sources: list[ConfluenceSource] = Field(default_factory=list, alias="confluenceSources")
     summary: str
     next_action_steps: list[str] = Field(alias="nextActionSteps")
     rca: list[str] = Field(max_length=10)

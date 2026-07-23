@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Confluence Incident Evidence"
+  short_description: "Integrate Confluence evidence into incident analysis"
+  default_prompt: "Use $add-confluence-incident-evidence to add safe Confluence evidence retrieval to this incident-analysis backend."
