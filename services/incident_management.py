@@ -54,7 +54,13 @@ class IncidentManagementService:
         assessment = await self._advisor.recommend(incident, matches, findings)
         logger.info(f"Advisor recommendation successfully generated for incident {incident.id}")
         
-        confidence = assess_confidence(incident, matches, findings, assessment)
+        confidence = assess_confidence(
+            incident,
+            matches,
+            findings,
+            assessment,
+            confluence_sources=confluence_sources,
+        )
         return IncidentAnalysis(
             incomingIncident=incident,
             similarIncidents=matches,
