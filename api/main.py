@@ -22,7 +22,7 @@ from agents.code_investigation import CodeInvestigationAgent
 from core.config import Settings
 from domain.models import AnalysisChatRequest, AnalysisChatResponse, AnalyzeRequest, HealthResponse, IncidentAnalysis
 from repositories.json_repository import DeploymentHistoryRepository, JsonIncidentRepository
-from repositories.code_repository import GithubCodeRepository, JsonCodeRepository
+from agents.chat_evidence_agents import ChatEvidenceAgents
 from services.advisor import IncidentAdvisor
 from services.analysis_sessions import AnalysisChatService, AnalysisSessionStore, IncidentToolRegistry
 from services.incident_management import IncidentManagementService
@@ -60,9 +60,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         raise RuntimeError("RAG_BACKEND must be either 'azure-search' or 'local'.")
     deployment_agent = DeploymentCheckAgent(DeploymentHistoryRepository(settings.data_directory))
-    code_repository = (GithubCodeRepository(settings.github_repository, settings.github_token)
-                       if settings.github_repository and settings.github_token
-                       else JsonCodeRepository(settings.data_directory))
     app.state.incident_service = IncidentManagementService(
         vector_store=vector_store,
         advisor=IncidentAdvisor(azure_openai),
@@ -72,7 +69,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.analysis_sessions = AnalysisSessionStore()
     app.state.analysis_chat_service = AnalysisChatService(
         app.state.analysis_sessions,
-        IncidentToolRegistry(vector_store, deployment_agent, code_repository),
+        IncidentToolRegistry(vector_store, deployment_agent, ChatEvidenceAgents()),
         azure_openai,
     )
     app.state.historical_incident_count = vector_store.count or 0

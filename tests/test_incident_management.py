@@ -145,9 +145,13 @@ async def test_chat_executes_only_registered_tool_and_returns_its_source() -> No
         def investigate(self, _incident: Incident) -> AgentFinding:
             return AgentFinding(agentName="DeploymentCheckAgent", status="DEPLOYMENT_FOUND", summary="Found", evidence="deploymentId=DEP-1")
 
-    class CodeRepository:
-        def search(self, _query: str, limit: int = 3):
-            return []
+    class EvidenceAgents:
+        async def github_evidence(self, _incident, _focus):
+            return AgentFinding(agentName="GitHubEvidenceAgent", status="GITHUB_EVIDENCE_COMPLETED", summary="Found", evidence="repo"), ["repo"]
+        async def database_evidence(self, _incident, _focus):
+            return AgentFinding(agentName="SqlEvidenceAgent", status="DATABASE_EVIDENCE_COMPLETED", summary="Found", evidence="db"), ["db"]
+        async def summarize(self, _question, _findings):
+            return AgentFinding(agentName="EvidenceSummarizerAgent", status="EVIDENCE_SUMMARIZED", summary="Combined", evidence="combined")
 
     class Client:
         def __init__(self) -> None:
@@ -155,7 +159,7 @@ async def test_chat_executes_only_registered_tool_and_returns_its_source() -> No
         async def chat_with_tools(self, _messages, tools):
             self.call_count += 1
             assert {tool["function"]["name"] for tool in tools} == {
-                "search_historical_incidents", "get_deployment_evidence", "get_code_evidence", "inspect_code_change_impact", "run_deep_rca_evidence"
+                               "search_historical_incidents", "get_deployment_evidence", "get_github_evidence", "get_database_evidence", "run_deep_rca_evidence"
             }
             if self.call_count == 1:
                 return {"message": {"role": "assistant", "content": None, "tool_calls": [{"id": "call-1", "function": {"name": "search_historical_incidents", "arguments": '{"investigation_focus":"prior resolutions"}'}}]}}
@@ -164,7 +168,7 @@ async def test_chat_executes_only_registered_tool_and_returns_its_source() -> No
     sessions = AnalysisSessionStore()
     analysis = IncidentAnalysis(incomingIncident=incident(), similarIncidents=[], agentFindings=[], summary="Initial", nextActionSteps=[], rca=[], codeChanges=None, evidenceSummary="None", agentFlow=[])
     session_id = await sessions.create(analysis)
-    chat = AnalysisChatService(sessions, IncidentToolRegistry(Store(), DeploymentAgent(), CodeRepository()), Client())
+    chat = AnalysisChatService(sessions, IncidentToolRegistry(Store(), DeploymentAgent(), EvidenceAgents()), Client())
     response = await chat.chat(session_id, "Have we seen this before?")
     assert response is not None
     assert response.answer == "A prior incident exists."
