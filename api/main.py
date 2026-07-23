@@ -1,10 +1,21 @@
 """FastAPI application entry point."""
 
 from contextlib import asynccontextmanager
+import logging
+import sys
 from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+
+# Initialize logging configuration to direct info/error outputs to stdout for GCP ingestion
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("api.main")
+
 
 from agents.deployment_check import DeploymentCheckAgent
 from agents.code_investigation import CodeInvestigationAgent
@@ -83,31 +94,42 @@ def service_from(request: Request) -> IncidentManagementService:
 
 @app.get("/health", response_model=HealthResponse, tags=["health"])
 async def health(request: Request) -> HealthResponse:
+    logger.info("Health check endpoint queried.")
     return HealthResponse(status="ok", historicalIncidentCount=request.app.state.historical_incident_count)
 
 @app.post("/api/v1/incidents/analyze", response_model=IncidentAnalysis, tags=["incidents"])
 async def analyze_incident(payload: AnalyzeRequest, request: Request) -> IncidentAnalysis:
+    logger.info(f"Received analysis request for incident ID: {payload.incident.id}, service: {payload.incident.service}")
     try:
         analysis = await service_from(request).analyze(payload.incident, payload.limit)
         analysis.analysis_id = await request.app.state.analysis_sessions.create(analysis)
+        logger.info(f"Successfully analyzed incident {payload.incident.id}. Created session: {analysis.analysis_id}")
         return analysis
     except (RuntimeError, ValueError) as error:
+        logger.error(f"Failed to analyze incident {payload.incident.id}: {error}", exc_info=True)
         raise HTTPException(status_code=503, detail=str(error)) from error
 
 
 @app.post("/api/v1/analysis-sessions/{analysis_id}/chat", response_model=AnalysisChatResponse, tags=["analysis sessions"])
 async def chat(analysis_id: str, payload: AnalysisChatRequest, request: Request) -> AnalysisChatResponse:
+    logger.info(f"Received chat message for session {analysis_id}")
     try:
         response = await request.app.state.analysis_chat_service.chat(analysis_id, payload.message)
     except RuntimeError as error:
+        logger.error(f"Error during chat handling in session {analysis_id}: {error}", exc_info=True)
         raise HTTPException(status_code=503, detail=str(error)) from error
     if response is None:
+        logger.warning(f"Chat request failed: session {analysis_id} not found or expired.")
         raise HTTPException(status_code=404, detail="Analysis session was not found or has expired.")
+    logger.info(f"Successfully generated response for session {analysis_id}. Agent calls: {response.agent_calls}")
     return response
 
 
 @app.delete("/api/v1/analysis-sessions/{analysis_id}", status_code=204, tags=["analysis sessions"])
 async def end_chat(analysis_id: str, request: Request) -> None:
+    logger.info(f"Received request to delete/end session {analysis_id}")
     deleted = await request.app.state.analysis_sessions.delete(analysis_id)
     if not deleted:
+        logger.warning(f"Delete request failed: session {analysis_id} not found or expired.")
         raise HTTPException(status_code=404, detail="Analysis session was not found or has expired.")
+    logger.info(f"Session {analysis_id} successfully deleted.")
