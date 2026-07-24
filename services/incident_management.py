@@ -8,6 +8,7 @@ from repositories.confluence_repository import ConfluenceRepository, ConfluenceR
 from services.advisor import IncidentAdvisor
 from services.confluence_summarizer import ConfluenceSummarizer
 from services.confidence import assess_confidence
+from services.code_change_proposal import CodeChangeProposalService
 from vector.store import IncidentStore
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ class IncidentManagementService:
         code_agent: CodeInvestigationAgent,
         confluence_repository: ConfluenceRepository | None = None,
         confluence_summarizer: ConfluenceSummarizer | None = None,
+        code_change_proposal: CodeChangeProposalService | None = None,
     ) -> None:
         self._vector_store = vector_store
         self._advisor = advisor
@@ -28,6 +30,7 @@ class IncidentManagementService:
         self._code_agent = code_agent
         self._confluence_repository = confluence_repository
         self._confluence_summarizer = confluence_summarizer
+        self._code_change_proposal = code_change_proposal
     async def analyze(self, incident: Incident, limit: int = 3) -> IncidentAnalysis:
         logger.info(f"Starting analysis for incident {incident.id} with similarity limit={limit}")
         
@@ -61,6 +64,11 @@ class IncidentManagementService:
             assessment,
             confluence_sources=confluence_sources,
         )
+        code_change_proposal = (
+            await self._code_change_proposal.propose(incident, assessment.code_change_intent, findings)
+            if self._code_change_proposal is not None
+            else None
+        )
         return IncidentAnalysis(
             incomingIncident=incident,
             similarIncidents=matches,
@@ -69,7 +77,8 @@ class IncidentManagementService:
             summary=assessment.summary,
             nextActionSteps=assessment.next_action_steps,
             rca=assessment.rca,
-            codeChanges=assessment.code_changes,
+            codeChanges=code_change_proposal,
+            code_change_intent=assessment.code_change_intent,
             evidenceSummary=self._evidence_summary(matches, findings),
             confidence=confidence,
             agentFlow=[

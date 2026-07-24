@@ -65,7 +65,21 @@ class InitialAssessment(ApiModel):
     summary: str = Field(description="Short summary of all agent findings.")
     next_action_steps: list[str] = Field(alias="nextActionSteps", default_factory=list)
     rca: list[str] = Field(default_factory=list, max_length=10, description="Maximum ten concise RCA lines.")
-    code_changes: str | None = Field(alias="codeChanges", default=None, description="Actual proposed code only; null when no code is needed.")
+    code_change_intent: str | None = Field(
+        alias="codeChangeIntent",
+        default=None,
+        description="Internal, evidence-backed intent for a GitHub MCP code proposal; null when no code change is warranted.",
+    )
+
+
+class CodeChangeProposal(ApiModel):
+    """A verified, single-file proposal returned by the initial analysis API."""
+
+    repository: str = Field(min_length=3, max_length=200)
+    file_path: str = Field(alias="filePath", min_length=1, max_length=500)
+    base_branch: Literal["main"] = Field(alias="baseBranch")
+    proposed_code: str = Field(alias="proposedCode", min_length=1)
+    code_changes: str = Field(alias="codeChanges", min_length=1)
 
 
 class ConfidenceScore(ApiModel):
@@ -87,7 +101,8 @@ class IncidentAnalysis(ApiModel):
     summary: str
     next_action_steps: list[str] = Field(alias="nextActionSteps")
     rca: list[str] = Field(max_length=10)
-    code_changes: str | None = Field(alias="codeChanges")
+    code_changes: CodeChangeProposal | None = Field(alias="codeChanges")
+    code_change_intent: str | None = Field(default=None, exclude=True, repr=False)
     evidence_summary: str = Field(alias="evidenceSummary")
     agent_flow: list[AgentFlowStep] = Field(alias="agentFlow")
     confidence: ConfidenceAssessment = Field(
@@ -104,6 +119,30 @@ class AnalyzeRequest(ApiModel):
 
 class AnalysisChatRequest(ApiModel):
     message: str = Field(min_length=1, max_length=8000)
+
+
+class DraftPrPreviewRequest(ApiModel):
+    repository: str = Field(min_length=3, max_length=200)
+    file_path: str = Field(alias="filePath", min_length=1, max_length=500)
+    base_branch: str | None = Field(default=None, alias="baseBranch", max_length=250)
+
+
+class DraftPrCreateRequest(ApiModel):
+    preview_id: str = Field(alias="previewId", min_length=1, max_length=100)
+
+
+class DraftPrPreviewResponse(ApiModel):
+    preview_id: str = Field(alias="previewId")
+    repository: str
+    base_branch: str = Field(alias="baseBranch")
+    file_path: str = Field(alias="filePath")
+    patch: str
+
+
+class DraftPrCreateResponse(ApiModel):
+    url: str
+    number: int
+    branch: str
 
 
 class ChatNarrative(ApiModel):

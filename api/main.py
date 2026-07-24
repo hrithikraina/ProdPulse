@@ -1,6 +1,7 @@
 """FastAPI application entry point."""
 
 from contextlib import asynccontextmanager
+import json
 import logging
 import sys
 from typing import AsyncIterator
@@ -20,7 +21,7 @@ logger = logging.getLogger("api.main")
 from agents.deployment_check import DeploymentCheckAgent
 from agents.code_investigation import CodeInvestigationAgent
 from core.config import Settings
-from domain.models import AnalysisChatRequest, AnalysisChatResponse, AnalyzeRequest, HealthResponse, IncidentAnalysis
+from domain.models import AnalysisChatRequest, AnalysisChatResponse, AnalyzeRequest, CodeChangeProposal, DraftPrCreateRequest, DraftPrCreateResponse, DraftPrPreviewRequest, DraftPrPreviewResponse, HealthResponse, IncidentAnalysis
 from repositories.json_repository import DeploymentHistoryRepository, JsonIncidentRepository
 from repositories.confluence_repository import ConfluenceCloudRepository
 from agents.chat_evidence_agents import ChatEvidenceAgents
@@ -29,6 +30,9 @@ from services.analysis_sessions import AnalysisChatService, AnalysisSessionStore
 from services.confluence_summarizer import ConfluenceEvidenceSummarizer
 from services.incident_management import IncidentManagementService
 from services.azure_openai import AzureOpenAIClient
+from services.draft_pr_proposal import DraftPrProposalService
+from services.code_change_proposal import CodeChangeProposalService
+from services.github_draft_pr import DraftPrError, GithubDraftPrService
 from vector.in_memory_store import InMemoryIncidentVectorStore
 from vector.azure_ai_search_store import AzureAISearchIncidentStore
 from vector.store import IncidentStore
@@ -65,6 +69,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     confluence_repository = (
         ConfluenceCloudRepository(settings.confluence) if settings.confluence is not None else None
     )
+    app.state.github_draft_pr = GithubDraftPrService(None, settings.github_token)
+    evidence_agents = ChatEvidenceAgents()
+    app.state.code_change_proposal = CodeChangeProposalService(
+        settings.github_owner,
+        app.state.github_draft_pr,
+        evidence_agents,
+    )
     app.state.incident_service = IncidentManagementService(
         vector_store=vector_store,
         advisor=IncidentAdvisor(azure_openai),
@@ -72,13 +83,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         code_agent=CodeInvestigationAgent(),
         confluence_repository=confluence_repository,
         confluence_summarizer=ConfluenceEvidenceSummarizer(azure_openai),
+        code_change_proposal=app.state.code_change_proposal,
     )
     app.state.analysis_sessions = AnalysisSessionStore()
     app.state.analysis_chat_service = AnalysisChatService(
         app.state.analysis_sessions,
-        IncidentToolRegistry(vector_store, deployment_agent, ChatEvidenceAgents()),
+        IncidentToolRegistry(vector_store, deployment_agent, evidence_agents),
         azure_openai,
     )
+    app.state.azure_openai = azure_openai
+    app.state.draft_pr_proposal = DraftPrProposalService(app.state.github_draft_pr, azure_openai)
     app.state.historical_incident_count = vector_store.count or 0
     yield
 
@@ -127,6 +141,64 @@ async def chat(analysis_id: str, payload: AnalysisChatRequest, request: Request)
         raise HTTPException(status_code=404, detail="Analysis session was not found or has expired.")
     logger.info(f"Successfully generated response for session {analysis_id}. Agent calls: {response.agent_calls}")
     return response
+
+
+@app.post("/api/v1/analysis-sessions/{analysis_id}/draft-pr/preview", response_model=DraftPrPreviewResponse, tags=["draft pull requests"])
+async def preview_draft_pr(analysis_id: str, payload: DraftPrPreviewRequest, request: Request) -> DraftPrPreviewResponse:
+    session = await request.app.state.analysis_sessions.get(analysis_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Analysis session was not found or has expired.")
+    try:
+        assessment = json.loads(session.initial_assessment)
+        code_changes = assessment.get("codeChanges")
+        try:
+            suggested_change = CodeChangeProposal.model_validate(code_changes)
+        except ValueError as error:
+            raise DraftPrError("This analysis does not include a verified suggested code change.") from error
+        requested_base_branch = payload.base_branch or "main"
+        github = request.app.state.github_draft_pr.for_repository(payload.repository)
+        if (
+            payload.repository.strip().casefold() == suggested_change.repository.casefold()
+            and payload.file_path == suggested_change.file_path
+            and requested_base_branch == suggested_change.base_branch
+        ):
+            preview = await github.preview(payload.file_path, suggested_change.code_changes, requested_base_branch)
+            preview["patch"] = suggested_change.code_changes
+        else:
+            if not session.code_change_intent:
+                raise DraftPrError("This analysis cannot regenerate a code proposal for a different target.")
+            proposal = DraftPrProposalService(github, request.app.state.azure_openai)
+            preview = await proposal.preview(
+                session.incident,
+                session.code_change_intent,
+                payload.file_path,
+                payload.base_branch,
+            )
+        preview_id = await request.app.state.analysis_sessions.save_draft_preview(session, {key: str(preview[key]) for key in ("repository", "filePath", "baseBranch", "patch")})
+        return DraftPrPreviewResponse(previewId=preview_id, repository=str(preview["repository"]), baseBranch=str(preview["baseBranch"]), filePath=str(preview["filePath"]), patch=str(preview["patch"]))
+    except DraftPrError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except RuntimeError as error:
+        logger.error("Draft PR preview failed: %s", error)
+        raise HTTPException(status_code=503, detail="Unable to generate a draft PR preview. Please try again later.") from error
+
+
+@app.post("/api/v1/analysis-sessions/{analysis_id}/draft-pr", response_model=DraftPrCreateResponse, tags=["draft pull requests"])
+async def create_draft_pr(analysis_id: str, payload: DraftPrCreateRequest, request: Request) -> DraftPrCreateResponse:
+    session = await request.app.state.analysis_sessions.get(analysis_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Analysis session was not found or has expired.")
+    preview = await request.app.state.analysis_sessions.get_draft_preview(session, payload.preview_id)
+    if preview is None:
+        raise HTTPException(status_code=404, detail="Draft PR preview was not found or has expired.")
+    title = f"fix: investigate {session.incident.id} - {session.incident.title}"[:240]
+    body = f"AI-assisted remediation for incident {session.incident.id}.\n\nThis draft pull request was created after a user reviewed the generated patch."
+    try:
+        github = request.app.state.github_draft_pr.for_repository(preview["repository"])
+        created = await github.create_from_patch(session.incident.id, preview["filePath"], preview["patch"], title, body, preview["baseBranch"])
+        return DraftPrCreateResponse(**created)
+    except DraftPrError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.delete("/api/v1/analysis-sessions/{analysis_id}", status_code=204, tags=["analysis sessions"])
