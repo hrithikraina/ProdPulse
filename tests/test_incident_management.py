@@ -1,5 +1,5 @@
 import pytest
-from domain.models import AgentFinding, Incident, IncidentAnalysis, InitialAssessment, SimilarIncident
+from domain.models import AgentFinding, CodeChangeProposal, Incident, IncidentAnalysis, InitialAssessment, SimilarIncident
 from agents.code_investigation import extract_error
 from core.config import PROJECT_ROOT
 from services.incident_management import IncidentManagementService
@@ -25,7 +25,7 @@ def test_cosine_similarity_returns_one_for_identical_vectors() -> None:
 
 def test_confidence_uses_evidence_and_caps_scores_at_ten() -> None:
     historical = Incident(id="INC-OLD", title="Timeout", service="checkout-api", severity="SEV-1", symptoms="Requests time out", rootCause="Pool exhausted", resolution="Roll back safely")
-    assessment = InitialAssessment(summary="", nextActionSteps=["Roll back the faulty release"], rca=[], codeChanges=None)
+    assessment = InitialAssessment(summary="", nextActionSteps=["Roll back the faulty release"], rca=[], codeChangeIntent=None)
     confidence = assess_confidence(
         incident().model_copy(update={"logs": "ERROR TimeoutException: request timed out"}),
         [SimilarIncident(incident=historical, similarity=0.99)],
@@ -49,7 +49,7 @@ async def test_low_similarity_runs_deployment_agent() -> None:
             # degrades to CONFLUENCE_NOT_CONFIGURED when no confluence_repository is supplied
             # (see IncidentManagementService._confluence_evidence).
             assert len(findings) == 2
-            return InitialAssessment(summary="Investigate the release.", nextActionSteps=["Check deployment"], rca=["Release is a hypothesis."], codeChanges=None)
+            return InitialAssessment(summary="Investigate the release.", nextActionSteps=["Check deployment"], rca=["Release is a hypothesis."], codeChangeIntent=None)
     class DeploymentAgent:
         def investigate(self, _incident: Incident) -> AgentFinding:
             return AgentFinding(agentName="DeploymentCheckAgent", status="DEPLOYMENT_FOUND", summary="Found one", evidence="DEP-1")
@@ -132,10 +132,19 @@ async def test_analysis_session_is_temporary_and_removed_on_delete() -> None:
     store = AnalysisSessionStore()
     analysis = IncidentAnalysis(
         incomingIncident=incident(), similarIncidents=[], agentFindings=[], summary="Check evidence.",
-        nextActionSteps=[], rca=[], codeChanges=None, evidenceSummary="None", agentFlow=[]
+        nextActionSteps=[], rca=[], codeChanges=CodeChangeProposal(
+            repository="acme/payments",
+            filePath="src/validation.py",
+            baseBranch="main",
+            proposedCode="def validate():\n    return True\n",
+            codeChanges="--- a/src/validation.py\n+++ b/src/validation.py\n@@ -1 +1,2 @@\n+def validate():\n+    return True\n",
+        ), code_change_intent="Add validation.", evidenceSummary="None", agentFlow=[]
     )
     session_id = await store.create(analysis)
-    assert (await store.get(session_id)) is not None
+    session = await store.get(session_id)
+    assert session is not None
+    assert session.code_change_intent == "Add validation."
+    assert '"repository": "acme/payments"' in session.initial_assessment
     assert await store.delete(session_id) is True
     assert await store.get(session_id) is None
 

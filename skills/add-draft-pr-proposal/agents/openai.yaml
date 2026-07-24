@@ -1,0 +1,4 @@
+interface:
+  display_name: "Add Draft PR Proposal"
+  short_description: "Add reviewable draft PR workflow"
+  default_prompt: "Use -draft-pr-proposal to port the staged draft PR workflow into this ProdPulse checkout."

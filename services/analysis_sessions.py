@@ -27,7 +27,9 @@ class AnalysisSession:
     agent_findings: list[AgentFinding]
     confluence_sources: list[ConfluenceSource]
     initial_assessment: str
+    code_change_intent: str | None = None
     recent_messages: list[dict[str, Any]] = field(default_factory=list)
+    draft_previews: dict[str, dict[str, str]] = field(default_factory=dict)
     expires_at: datetime = field(default_factory=lambda: datetime.now(UTC) + timedelta(minutes=30))
 
 
@@ -53,8 +55,9 @@ class AnalysisSessionStore:
                     "summary": analysis.summary,
                     "nextActionSteps": analysis.next_action_steps,
                     "rca": analysis.rca,
-                    "codeChanges": analysis.code_changes,
+                    "codeChanges": analysis.code_changes.model_dump(by_alias=True) if analysis.code_changes else None,
                 }),
+                code_change_intent=analysis.code_change_intent,
                 expires_at=datetime.now(UTC) + self._ttl,
             )
         logger.info(f"Session {session_id} successfully created.")
@@ -84,6 +87,21 @@ class AnalysisSessionStore:
         async with self._lock:
             session.expires_at = datetime.now(UTC) + self._ttl
             logger.info(f"Session touch: extended expires_at to {session.expires_at}")
+
+    async def save_draft_preview(self, session: AnalysisSession, preview: dict[str, str]) -> str:
+        preview_id = f"draft-{uuid4()}"
+        async with self._lock:
+            session.draft_previews[preview_id] = preview
+            session.expires_at = datetime.now(UTC) + self._ttl
+        return preview_id
+
+    async def get_draft_preview(self, session: AnalysisSession, preview_id: str) -> dict[str, str] | None:
+        async with self._lock:
+            self._purge_expired()
+            preview = session.draft_previews.get(preview_id)
+            if preview:
+                session.expires_at = datetime.now(UTC) + self._ttl
+            return preview
 
     def _purge_expired(self) -> None:
         now = datetime.now(UTC)

@@ -16,7 +16,7 @@ class IncidentAdvisor:
                   "investigation/remediation steps. Say explicitly when evidence is insufficient. "
                   "Return ONLY valid JSON with exactly these fields: summary (one short paragraph), "
                   "nextActionSteps (array of concise actions), rca (array of at most 10 concise lines), "
-                  "and codeChanges (a complete proposed code snippet only, without explanation or Markdown fences; use null when code is not evidenced).\n\n"
+                  "and codeChangeIntent (a concise, evidence-backed description of the required code change; use null when code is not evidenced).\n\n"
                   f"NEW INCIDENT:\n{incoming.similarity_text()}\n\nHISTORICAL INCIDENTS:\n{history}\n\nAGENT EVIDENCE:\n{evidence}")
         response = await self._client.generate(prompt)
         try:

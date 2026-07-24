@@ -43,7 +43,7 @@ class JsonCodeRepository:
 
 
 class GithubCodeRepository:
-    """GitHub code-search adapter, enabled with GITHUB_REPOSITORY and GITHUB_TOKEN."""
+    """Legacy direct GitHub code-search adapter; automatic proposals use GitHub MCP instead."""
 
     def __init__(self, repository: str, token: str) -> None:
         self._repository = repository

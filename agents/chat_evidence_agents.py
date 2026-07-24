@@ -124,6 +124,46 @@ Collect only relevant code-search results, up to three source files, and recent 
             reports.append({"repository": f"{target['owner']}/{target['repo']}", "evidence": str(result["messages"][-1].content)})
         return AgentFinding(agentName="GitHubEvidenceAgent", status="GITHUB_EVIDENCE_COMPLETED", summary=f"GitHub MCP evidence collected for: {focus or 'the active incident'}.", evidence=json.dumps(reports)), [item["repository"] for item in reports]
 
+    async def propose_code_change(
+        self,
+        owner: str,
+        incident: Incident,
+        change_intent: str,
+        findings: list[AgentFinding],
+    ) -> str:
+        """Use read-only GitHub MCP tools to locate and revise one owned source file."""
+        agent = await self._github()
+        evidence = "\n".join(
+            f"- {finding.agent_name} [{finding.status}]: {finding.summary}\n  {finding.evidence}"
+            for finding in findings
+        ) or "No additional evidence was collected."
+        result = await agent.ainvoke({"messages": [{"role": "user", "content": f"""You are generating a safe, single-file code proposal for an incident.
+
+Use GitHub MCP tools only for repositories owned by `{owner}`. Discover the repository and source file from the incident and change intent; do not assume a repository name or path. Read the chosen file from branch `main` before proposing an edit. Never create, modify, merge, comment on, close, or delete anything.
+
+Return `null` when you cannot establish one clearly relevant existing file on `main`, when the relevant repository is not owned by `{owner}`, or when the evidence does not justify a code change.
+
+Otherwise return ONLY valid JSON with exactly these fields:
+- repository: `owner/repository`
+- filePath: a repository-relative path
+- baseBranch: exactly `main`
+- proposedCode: complete revised contents of the selected file, with no Markdown fence or prose
+
+INCIDENT
+ID: {incident.id}
+Title: {incident.title}
+Service: {incident.service}
+Severity: {incident.severity}
+Symptoms: {incident.symptoms}
+Logs: {incident.logs or 'not supplied'}
+
+CODE CHANGE INTENT
+{change_intent}
+
+EVIDENCE
+{evidence}"""}]})
+        return str(result["messages"][-1].content)
+
     async def database_evidence(self, incident: Incident, focus: str) -> tuple[AgentFinding, list[str]]:
         agent = await self._sql()
         response = await asyncio.to_thread(agent.invoke, {"input": f"""Collect read-only SQLite evidence for this incident.

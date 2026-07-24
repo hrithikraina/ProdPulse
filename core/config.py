@@ -4,9 +4,11 @@ import os
 from pathlib import Path
 import re
 from urllib.parse import urlparse
+from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 _SPACE_KEY = re.compile(r"^[A-Za-z0-9_-]+$")
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,7 +32,7 @@ class Settings:
     azure_search_index_name: str | None
     azure_search_api_version: str
     data_directory: Path
-    github_repository: str | None
+    github_owner: str | None
     github_token: str | None
     confluence: ConfluenceSettings | None
 
@@ -50,8 +52,8 @@ class Settings:
             azure_search_index_name=os.getenv("AZURE_SEARCH_INDEX_NAME"),
             azure_search_api_version=os.getenv("AZURE_SEARCH_API_VERSION", "2025-09-01"),
             data_directory=Path(os.getenv("DATA_DIRECTORY", PROJECT_ROOT / "data")),
-            github_repository=os.getenv("GITHUB_REPOSITORY"),
-            github_token=os.getenv("GITHUB_TOKEN"),
+            github_owner=(os.getenv("GITHUB_OWNER") or "").strip() or None,
+            github_token=os.getenv("GITHUB_TOKEN") or os.getenv("GITHUB_PAT"),
             confluence=_confluence_settings(),
         )
 
